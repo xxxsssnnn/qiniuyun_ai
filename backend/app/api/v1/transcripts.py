@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.schemas.common import TranscriptChunkCreate, TranscriptChunkRead
+from app.schemas.realtime import StreamTextChunk
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 
 router = APIRouter()
@@ -23,3 +24,8 @@ async def create_chunk(payload: TranscriptChunkCreate) -> TranscriptChunkRead:
 async def latest_chunk() -> TranscriptChunkRead | None:
     latest = buffer.latest()
     return TranscriptChunkRead.model_validate(latest) if latest else None
+
+
+@router.post("/stream", response_model=StreamTextChunk)
+async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
+    return payload

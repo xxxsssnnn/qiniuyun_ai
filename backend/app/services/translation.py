@@ -10,5 +10,5 @@ class TranslationRequest:
 
 class TranslationService:
     def translate(self, request: TranslationRequest) -> str:
-        # 这里先保留占位实现，后续接入大模型或翻译模型
+        # 占位实现：后续替换成大模型/翻译服务调用
         return request.source_text
