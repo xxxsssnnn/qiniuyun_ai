@@ -4,6 +4,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.schemas.common import TranscriptChunkCreate, TranscriptChunkRead
 from app.schemas.realtime import StreamTextChunk
+from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager
 from app.services.mock_stream import start_mock_stream
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
@@ -47,28 +48,32 @@ async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     await manager.connect(session_id, websocket)
+    session = audio_sessions.get_or_create(session_id)
     try:
-        await manager.broadcast(
-            session_id,
-            {
-                "type": "status",
-                "session_id": session_id,
-                "payload": {"message": "connected"},
-            },
-        )
+        await manager.broadcast(session_id, {"type": "status", "session_id": session_id, "payload": {"message": "connected"}})
         while True:
-            data = await websocket.receive_json()
-            if data.get("type") == "start_demo":
+            data = await websocket.receive()
+            if data.get("text"):
+                import json
+
+                message = json.loads(data["text"])
+                message_type = message.get("type")
+                if message_type == "start_demo":
+                    await manager.broadcast(session_id, {"type": "status", "session_id": session_id, "payload": {"message": "demo started"}})
+                    await start_mock_stream(manager, session_id)
+                elif message_type == "start_audio":
+                    session.start()
+                    await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording started"}})
+                elif message_type == "stop_audio":
+                    session.stop()
+                    await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording stopped"}})
+                else:
+                    await manager.broadcast(session_id, message)
+            elif data.get("bytes"):
+                session.append_chunk(data["bytes"])
                 await manager.broadcast(
                     session_id,
-                    {
-                        "type": "status",
-                        "session_id": session_id,
-                        "payload": {"message": "demo started"},
-                    },
+                    {"type": "audio", "session_id": session_id, "payload": {"message": "audio chunk received", "chunkCount": session.audio_chunk_count}},
                 )
-                await start_mock_stream(manager, session_id)
-            else:
-                await manager.broadcast(session_id, data)
     except WebSocketDisconnect:
         manager.disconnect(session_id, websocket)
