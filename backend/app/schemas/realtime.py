@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +20,13 @@ class StreamTextChunk(BaseModel):
     source_text: str
     translated_text: str = ""
     is_final: bool = False
-    start_ms: Optional[int] = None
-    end_ms: Optional[int] = None
+    start_ms: int | None = None
+    end_ms: int | None = None
     revision: int = 0
+
+
+class AudioChunkMessage(BaseModel):
+    type: str = "audio"
+    session_id: str
+    mime_type: str = "audio/webm;codecs=opus"
+    data_base64: str
