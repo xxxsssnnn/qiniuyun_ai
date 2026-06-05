@@ -8,10 +8,12 @@ from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager
 from app.services.mock_stream import start_mock_stream
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
+from app.services.transcription_processor import MockTranscriptionProcessor
 
 router = APIRouter()
 buffer = TranscriptBuffer()
 manager = ConnectionManager()
+processor = MockTranscriptionProcessor(manager, buffer)
 
 
 @router.post("/chunks", response_model=TranscriptChunkRead)
@@ -71,9 +73,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     await manager.broadcast(session_id, message)
             elif data.get("bytes"):
                 session.append_chunk(data["bytes"])
-                await manager.broadcast(
-                    session_id,
-                    {"type": "audio", "session_id": session_id, "payload": {"message": "audio chunk received", "chunkCount": session.audio_chunk_count}},
-                )
+                await processor.handle_audio_chunk(session_id, data["bytes"])
     except WebSocketDisconnect:
         manager.disconnect(session_id, websocket)
