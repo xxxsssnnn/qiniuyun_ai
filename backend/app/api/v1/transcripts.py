@@ -1,8 +1,11 @@
+from typing import Optional
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.schemas.common import TranscriptChunkCreate, TranscriptChunkRead
 from app.schemas.realtime import StreamTextChunk
 from app.services.connection_manager import ConnectionManager
+from app.services.mock_stream import start_mock_stream
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 
 router = APIRouter()
@@ -22,8 +25,8 @@ async def create_chunk(payload: TranscriptChunkCreate) -> TranscriptChunkRead:
     return TranscriptChunkRead.model_validate(chunk)
 
 
-@router.get("/latest", response_model=TranscriptChunkRead | None)
-async def latest_chunk() -> TranscriptChunkRead | None:
+@router.get("/latest", response_model=Optional[TranscriptChunkRead])
+async def latest_chunk() -> Optional[TranscriptChunkRead]:
     latest = buffer.latest()
     return TranscriptChunkRead.model_validate(latest) if latest else None
 
@@ -55,6 +58,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
         )
         while True:
             data = await websocket.receive_json()
-            await manager.broadcast(session_id, data)
+            if data.get("type") == "start_demo":
+                await manager.broadcast(
+                    session_id,
+                    {
+                        "type": "status",
+                        "session_id": session_id,
+                        "payload": {"message": "demo started"},
+                    },
+                )
+                await start_mock_stream(manager, session_id)
+            else:
+                await manager.broadcast(session_id, data)
     except WebSocketDisconnect:
         manager.disconnect(session_id, websocket)
