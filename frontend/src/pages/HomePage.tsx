@@ -16,15 +16,17 @@ export function HomePage() {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
+  const [socket, setSocket] = useState<WebSocket | null>(null)
 
   useEffect(() => {
     setConnectionStatus('connecting')
-    const socket = createRealtimeSocket(sessionId)
+    const realtimeSocket = createRealtimeSocket(sessionId)
+    setSocket(realtimeSocket)
 
-    socket.onopen = () => setConnectionStatus('connected')
-    socket.onclose = () => setConnectionStatus('disconnected')
-    socket.onerror = () => setConnectionStatus('disconnected')
-    socket.onmessage = (event) => {
+    realtimeSocket.onopen = () => setConnectionStatus('connected')
+    realtimeSocket.onclose = () => setConnectionStatus('disconnected')
+    realtimeSocket.onerror = () => setConnectionStatus('disconnected')
+    realtimeSocket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data as string) as RealtimeMessage & { payload?: any }
         setMessages((prev) => [...prev.slice(-19), message])
@@ -50,8 +52,17 @@ export function HomePage() {
       }
     }
 
-    return () => socket.close()
+    return () => realtimeSocket.close()
   }, [sessionId])
+
+  const handleStartDemo = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    socket.send(JSON.stringify({ type: 'start_demo' }))
+    setMessages((prev) => [
+      ...prev.slice(-19),
+      { type: 'status', session_id: sessionId, payload: { message: 'demo requested' } },
+    ])
+  }
 
   return (
     <main className="app-shell">
@@ -61,6 +72,12 @@ export function HomePage() {
         <p>
           当前是前端实时接入骨架，后续可以直接对接音频流、识别结果、翻译结果和修正事件。
         </p>
+        <div className="hero-actions">
+          <button className="primary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>
+            开始演示
+          </button>
+          <span className="hint">点击后向后端发送 `start_demo` 消息，开始模拟实时字幕。</span>
+        </div>
       </section>
 
       <section className="panel-grid">
