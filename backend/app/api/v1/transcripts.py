@@ -30,6 +30,14 @@ async def latest_chunk() -> TranscriptChunkRead | None:
 
 @router.post("/stream", response_model=StreamTextChunk)
 async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
+    buffer.append(
+        TranscriptChunk(
+            chunk_id=payload.chunk_id,
+            source_text=payload.source_text,
+            translated_text=payload.translated_text,
+            is_final=payload.is_final,
+        )
+    )
     return payload
 
 
@@ -37,6 +45,14 @@ async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     await manager.connect(session_id, websocket)
     try:
+        await manager.broadcast(
+            session_id,
+            {
+                "type": "status",
+                "session_id": session_id,
+                "payload": {"message": "connected"},
+            },
+        )
         while True:
             data = await websocket.receive_json()
             await manager.broadcast(session_id, data)
