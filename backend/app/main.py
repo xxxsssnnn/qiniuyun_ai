@@ -54,6 +54,8 @@ async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
         await manager.broadcast(session_id, {"type": "status", "session_id": session_id, "payload": {"message": "connected"}})
         while True:
             data = await websocket.receive()
+            if data["type"] == "websocket.disconnect":
+                break
             if data.get("text"):
                 import json
 
@@ -81,6 +83,8 @@ async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
                 session.append_chunk(data["bytes"])
                 await processor.handle_audio_chunk(session_id, data["bytes"])
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(session_id, websocket)
 
 
