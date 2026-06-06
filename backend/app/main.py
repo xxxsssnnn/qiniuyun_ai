@@ -6,19 +6,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router as api_router
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.services.audio_session import audio_sessions
 from app.services.asr_factory import get_asr_provider
+from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager
 from app.services.glossary import glossary_manager
 from app.services.mock_stream import start_mock_stream
 from app.services.revision_manager import revision_manager
-from app.services.streaming import TranscriptBuffer, TranscriptChunk
+from app.services.runtime_settings import load_runtime_settings
+from app.services.streaming import TranscriptBuffer
 from app.services.transcription_processor import TranscriptionProcessor
 from app.services.translation_factory import get_translation_provider
+from app.services.tts_factory import get_tts_provider
 
 manager = ConnectionManager()
 buffer = TranscriptBuffer()
-processor = TranscriptionProcessor(manager, buffer, get_asr_provider(), get_translation_provider())
+processor = TranscriptionProcessor(manager, buffer, get_asr_provider(), get_translation_provider(), get_tts_provider())
 
 
 @asynccontextmanager
@@ -26,6 +28,7 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
         glossary_manager.load_entries_from_db(connection)
+    load_runtime_settings()
     yield
 
 

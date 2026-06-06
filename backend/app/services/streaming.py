@@ -21,5 +21,12 @@ class TranscriptBuffer:
         while len(self.items) > self.max_items:
             self.items.popleft()
 
+    def upsert(self, chunk: TranscriptChunk) -> None:
+        for index, item in enumerate(self.items):
+            if item.chunk_id == chunk.chunk_id:
+                self.items[index] = chunk
+                return
+        self.append(chunk)
+
     def latest(self) -> Optional[TranscriptChunk]:
         return self.items[-1] if self.items else None
