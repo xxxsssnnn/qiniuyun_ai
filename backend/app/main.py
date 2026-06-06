@@ -20,7 +20,6 @@ from app.services.tts_factory import get_tts_provider
 
 manager = ConnectionManager()
 buffer = TranscriptBuffer()
-processor = TranscriptionProcessor(manager, buffer, get_asr_provider(), get_translation_provider(), get_tts_provider())
 
 
 @asynccontextmanager
@@ -51,6 +50,13 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 @app.websocket("/api/v1/transcripts/ws/{session_id}")
 async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
+    processor = TranscriptionProcessor(
+        manager,
+        buffer,
+        get_asr_provider(),
+        get_translation_provider(),
+        get_tts_provider(),
+    )
     await manager.connect(session_id, websocket)
     session = audio_sessions.get_or_create(session_id)
     try:
@@ -72,6 +78,7 @@ async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
                     await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording started"}})
                 elif message_type == "stop_audio":
                     session.stop()
+                    await processor.close_session(session_id)
                     await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording stopped"}})
                 elif message_type == "rollback":
                     chunk_id = message.get("chunk_id")
@@ -88,6 +95,7 @@ async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        await processor.close_session(session_id)
         manager.disconnect(session_id, websocket)
 
 

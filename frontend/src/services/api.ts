@@ -26,6 +26,10 @@ export type AppSettings = {
   asr_provider: string
   translation_provider: string
   tts_provider: string
+  qwen_asr_model: string
+  qwen_asr_language: string
+  dashscope_region: string
+  dashscope_api_key_configured?: boolean
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
@@ -77,6 +81,11 @@ export async function updateSettings(payload: AppSettings) {
     body: JSON.stringify(payload),
   })
   return response.json() as Promise<AppSettings>
+}
+
+export async function testQwenConnection() {
+  const response = await fetch(`${API_BASE}/settings/test-qwen`, { method: 'POST' })
+  return response.json() as Promise<{ ok: boolean; message: string }>
 }
 
 export async function fetchLatestChunk() {

@@ -1,72 +1,189 @@
 import { useEffect, useState } from 'react'
 
-import { fetchHealth, fetchSettings, updateSettings } from '../services/api'
+import {
+  fetchHealth,
+  fetchSettings,
+  testQwenConnection,
+  updateSettings,
+  type AppSettings,
+} from '../services/api'
 
-type ProviderChoice = 'mock' | 'whisper' | 'openai'
+type ProviderChoice = 'mock' | 'whisper' | 'qwen' | 'openai'
+type Feedback = { kind: 'success' | 'error'; message: string } | null
+
+const defaultSettings: AppSettings = {
+  asr_provider: 'mock',
+  translation_provider: 'mock',
+  tts_provider: 'mock',
+  qwen_asr_model: 'qwen3-asr-flash-realtime',
+  qwen_asr_language: 'en',
+  dashscope_region: 'cn',
+  dashscope_api_key_configured: false,
+}
 
 export function SettingsPage() {
-  const [health, setHealth] = useState('unknown')
-  const [asrProvider, setAsrProvider] = useState<ProviderChoice>('mock')
-  const [translationProvider, setTranslationProvider] = useState<ProviderChoice>('mock')
-  const [ttsProvider, setTtsProvider] = useState<ProviderChoice>('mock')
-  const [saved, setSaved] = useState(false)
+  const [health, setHealth] = useState('检查中')
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [feedback, setFeedback] = useState<Feedback>(null)
 
   useEffect(() => {
     void fetchHealth().then((res) => setHealth(res.status)).catch(() => setHealth('offline'))
-    void fetchSettings().then((settings) => {
-      setAsrProvider((settings.asr_provider as ProviderChoice) ?? 'mock')
-      setTranslationProvider((settings.translation_provider as ProviderChoice) ?? 'mock')
-      setTtsProvider((settings.tts_provider as ProviderChoice) ?? 'mock')
-    }).catch(() => undefined)
+    void fetchSettings()
+      .then((stored) => setSettings({ ...defaultSettings, ...stored }))
+      .catch(() => setFeedback({ kind: 'error', message: '读取配置失败，请确认后端已启动。' }))
+      .finally(() => setLoading(false))
   }, [])
 
+  const setField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    setSettings((current) => ({ ...current, [key]: value }))
+    setFeedback(null)
+  }
+
   const handleSave = async () => {
-    await updateSettings({ asr_provider: asrProvider, translation_provider: translationProvider, tts_provider: ttsProvider })
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 1800)
+    setSaving(true)
+    setFeedback(null)
+    try {
+      const saved = await updateSettings(settings)
+      setSettings((current) => ({ ...current, ...saved }))
+      setFeedback({ kind: 'success', message: '配置已保存，新建的实时会话会立即使用这套设置。' })
+    } catch {
+      setFeedback({ kind: 'error', message: '保存失败，请检查后端服务。' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setFeedback(null)
+    try {
+      await updateSettings(settings)
+      const result = await testQwenConnection()
+      setFeedback({ kind: result.ok ? 'success' : 'error', message: result.message })
+    } catch {
+      setFeedback({ kind: 'error', message: '连接测试失败，请检查网络与后端日志。' })
+    } finally {
+      setTesting(false)
+    }
   }
 
   return (
     <main className="page-shell">
       <section className="page-hero">
         <span className="badge">Settings</span>
-        <h2>系统配置</h2>
-        <p>配置识别、翻译、播报与服务状态，用于后续接入真实模型。</p>
+        <h2>模型与实时语音配置</h2>
+        <p>选择识别、翻译和播报服务。千问 API Key 只从后端环境变量读取，不会发送到浏览器或写入数据库。</p>
       </section>
 
-      <section className="panel-grid two-cols">
-        <article className="panel">
-          <h3>服务状态</h3>
-          <p className="muted">后端健康状态：{health}</p>
-          <p className="muted">后端地址：http://localhost:8000</p>
+      <section className="settings-status-grid">
+        <article className="panel settings-status-card">
+          <span className={`settings-dot ${health === 'ok' ? 'online' : ''}`} />
+          <div><small>后端服务</small><strong>{health}</strong></div>
         </article>
-        <article className="panel">
-          <h3>Provider 选择</h3>
-          <div className="glossary-form">
-            <select value={asrProvider} onChange={(e) => setAsrProvider(e.target.value as ProviderChoice)}>
-              <option value="mock">ASR Mock</option>
-              <option value="whisper">ASR Whisper</option>
-            </select>
-            <select value={translationProvider} onChange={(e) => setTranslationProvider(e.target.value as ProviderChoice)}>
-              <option value="mock">Translation Mock</option>
-              <option value="openai">Translation OpenAI</option>
-            </select>
-            <select value={ttsProvider} onChange={(e) => setTtsProvider(e.target.value as ProviderChoice)}>
-              <option value="mock">TTS Mock</option>
-              <option value="openai">TTS OpenAI</option>
-            </select>
-            <button className="primary-button" onClick={handleSave}>保存配置</button>
+        <article className="panel settings-status-card">
+          <span className={`settings-dot ${settings.dashscope_api_key_configured ? 'online' : ''}`} />
+          <div><small>千问 API Key</small><strong>{settings.dashscope_api_key_configured ? '已配置' : '未检测到'}</strong></div>
+        </article>
+        <article className="panel settings-status-card">
+          <span className={`settings-dot ${settings.asr_provider === 'qwen' ? 'online' : ''}`} />
+          <div><small>当前语音识别</small><strong>{settings.asr_provider}</strong></div>
+        </article>
+      </section>
+
+      <section className="panel settings-panel" aria-busy={loading}>
+        <div className="panel-header">
+          <div>
+            <h3>Provider 配置</h3>
+            <p>保存后，下一次开始麦克风采集时会按这里的配置创建模型连接。</p>
           </div>
-          {saved ? <p className="muted">配置已保存。</p> : null}
-        </article>
+          <span className="panel-badge">Runtime</span>
+        </div>
+
+        <div className="settings-form-grid">
+          <label className="settings-field">
+            <span>语音识别 ASR</span>
+            <select value={settings.asr_provider} onChange={(event) => setField('asr_provider', event.target.value as ProviderChoice)} disabled={loading}>
+              <option value="qwen">千问实时语音识别</option>
+              <option value="whisper">本地 Whisper</option>
+              <option value="mock">Mock 演示</option>
+            </select>
+            <small>实时麦克风建议使用千问。</small>
+          </label>
+
+          <label className="settings-field">
+            <span>翻译</span>
+            <select value={settings.translation_provider} onChange={(event) => setField('translation_provider', event.target.value as ProviderChoice)} disabled={loading}>
+              <option value="mock">Mock 翻译</option>
+              <option value="openai">OpenAI 兼容翻译</option>
+            </select>
+          </label>
+
+          <label className="settings-field">
+            <span>语音播报 TTS</span>
+            <select value={settings.tts_provider} onChange={(event) => setField('tts_provider', event.target.value as ProviderChoice)} disabled={loading}>
+              <option value="mock">浏览器播报 / Mock</option>
+              <option value="openai">OpenAI TTS</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="panel settings-panel">
+        <div className="panel-header">
+          <div>
+            <h3>千问实时语音识别</h3>
+            <p>音频会以 PCM16、16 kHz、单声道流式发送，由服务端 VAD 自动断句。</p>
+          </div>
+          <span className="panel-badge">Qwen ASR</span>
+        </div>
+
+        <div className="settings-form-grid">
+          <label className="settings-field">
+            <span>模型</span>
+            <input value={settings.qwen_asr_model} onChange={(event) => setField('qwen_asr_model', event.target.value)} placeholder="qwen3-asr-flash-realtime" />
+          </label>
+
+          <label className="settings-field">
+            <span>源语言</span>
+            <select value={settings.qwen_asr_language} onChange={(event) => setField('qwen_asr_language', event.target.value)}>
+              <option value="en">英语</option>
+              <option value="zh">中文</option>
+              <option value="yue">粤语</option>
+              <option value="ja">日语</option>
+              <option value="ko">韩语</option>
+              <option value="fr">法语</option>
+              <option value="de">德语</option>
+              <option value="es">西班牙语</option>
+            </select>
+          </label>
+
+          <label className="settings-field">
+            <span>服务地域</span>
+            <select value={settings.dashscope_region} onChange={(event) => setField('dashscope_region', event.target.value)}>
+              <option value="cn">中国内地（北京）</option>
+              <option value="intl">国际（新加坡）</option>
+            </select>
+            <small>API Key 必须与所选地域一致。</small>
+          </label>
+        </div>
+
+        <div className="settings-actions">
+          <button className="primary-button" onClick={handleSave} disabled={loading || saving}>{saving ? '保存中...' : '保存配置'}</button>
+          <button className="secondary-button" onClick={handleTest} disabled={loading || testing}>{testing ? '连接中...' : '测试千问连接'}</button>
+        </div>
+
+        {feedback ? <p className={`settings-feedback ${feedback.kind}`}>{feedback.message}</p> : null}
       </section>
 
       <section className="panel">
-        <h3>配置说明</h3>
+        <h3>环境变量</h3>
         <ul className="feature-list">
-          <li>这些选择现在会保存到后端配置表。</li>
-          <li>后续可以把运行时 provider 改成读取这个配置。</li>
-          <li>也可以按项目模式和演示模式做切换。</li>
+          <li><code>DASHSCOPE_API_KEY</code>：推荐名称；也兼容 <code>QWEN_API_KEY</code> 和 <code>ALIYUN_API_KEY</code>。</li>
+          <li>切换地域时，请使用对应地域创建的 API Key。</li>
+          <li>修改 provider 后请重新开始一次麦克风会话，已有会话不会中途更换模型。</li>
         </ul>
       </section>
     </main>

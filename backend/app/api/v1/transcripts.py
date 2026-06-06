@@ -12,11 +12,11 @@ from app.services.revision_manager import revision_manager
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.transcription_processor import TranscriptionProcessor
 from app.services.translation_factory import get_translation_provider
+from app.services.tts_factory import get_tts_provider
 
 router = APIRouter()
 buffer = TranscriptBuffer()
 manager = ConnectionManager()
-processor = TranscriptionProcessor(manager, buffer, get_asr_provider(), get_translation_provider())
 
 
 @router.post("/chunks", response_model=TranscriptChunkRead)
@@ -52,6 +52,13 @@ async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
+    processor = TranscriptionProcessor(
+        manager,
+        buffer,
+        get_asr_provider(),
+        get_translation_provider(),
+        get_tts_provider(),
+    )
     await manager.connect(session_id, websocket)
     session = audio_sessions.get_or_create(session_id)
     try:
@@ -73,6 +80,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording started"}})
                 elif message_type == "stop_audio":
                     session.stop()
+                    await processor.close_session(session_id)
                     await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording stopped"}})
                 elif message_type == "rollback":
                     chunk_id = message.get("chunk_id")
@@ -89,4 +97,5 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        await processor.close_session(session_id)
         manager.disconnect(session_id, websocket)

@@ -10,3 +10,4 @@ python-dotenv>=1.0.1
 webrtcvad-wheels>=2.0.14
 numpy>=1.26.0
 orjson>=3.10.0
+websockets>=15.0

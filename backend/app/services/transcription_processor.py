@@ -41,8 +41,10 @@ class TranscriptionProcessor:
     async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
         index = next(self._counter)
         asr_result = await self.asr_provider.transcribe(chunk, session_id)
+        if not asr_result.text.strip():
+            return
         glossary_manager.remember_context(session_id, asr_result.text)
-        is_final = asr_result.is_final or index % 3 == 0
+        is_final = asr_result.is_final
         chunk_id = self._active_chunk_ids.get(session_id)
         if not chunk_id:
             chunk_id = f"{session_id}-chunk-{index}"
@@ -96,3 +98,6 @@ class TranscriptionProcessor:
                 },
             },
         )
+
+    async def close_session(self, session_id: str) -> None:
+        await self.asr_provider.close_session(session_id)

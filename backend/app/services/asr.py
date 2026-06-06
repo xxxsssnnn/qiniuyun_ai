@@ -16,6 +16,9 @@ class ASRProvider(ABC):
     async def transcribe(self, audio_chunk: bytes, session_id: str) -> ASRResult:
         raise NotImplementedError
 
+    async def close_session(self, session_id: str) -> None:
+        return None
+
 
 class MockASRProvider(ASRProvider):
     def __init__(self) -> None:
