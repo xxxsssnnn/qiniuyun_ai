@@ -10,6 +10,7 @@
 - 流式字幕展示与修正
 - ASR / 翻译 / TTS 可切换 provider
 - Whisper 本地识别支持
+- DeepSeek 翻译支持
 - OpenAI 兼容翻译与语音合成支持
 - 字幕版本记录与回滚
 - 术语库管理与上下文记忆
@@ -30,7 +31,7 @@
 - **Frontend**：React + TypeScript + Vite
 - **Backend**：FastAPI + WebSocket
 - **Database**：SQLite + SQLAlchemy
-- **AI**：Whisper / OpenAI 兼容翻译与 TTS / 浏览器语音播报
+- **AI**：Whisper / DeepSeek / OpenAI 兼容翻译与 TTS / 浏览器语音播报
 
 ## 快速开始
 
@@ -38,12 +39,6 @@
 
 ```bash
 cp .env.example .env
-```
-
-Windows PowerShell：
-
-```powershell
-Copy-Item .env.example .env
 ```
 
 ### 2. 启动后端
@@ -63,13 +58,8 @@ npm run dev
 
 ### 4. 打开应用
 
-前端默认地址：
-
-- `http://localhost:5173`
-
-后端默认地址：
-
-- `http://localhost:8000`
+- 前端：`http://localhost:5173`
+- 后端：`http://localhost:8000`
 - WebSocket：`ws://localhost:8000/api/v1/transcripts/ws/demo-session`
 
 ## 环境变量
@@ -84,6 +74,9 @@ npm run dev
 - `OPENAI_TRANSLATION_MODEL`
 - `OPENAI_TTS_MODEL`
 - `OPENAI_TTS_VOICE`
+- `DEEPSEEK_API_KEY`
+- `DEEPSEEK_MODEL`
+- `DEEPSEEK_BASE_URL`
 - `WHISPER_MODEL`
 - `WHISPER_DEVICE`
 - `WHISPER_COMPUTE_TYPE`

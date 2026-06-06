@@ -26,6 +26,15 @@ export type AppSettings = {
   asr_provider: string
   translation_provider: string
   tts_provider: string
+  openai_api_key: string
+  openai_base_url: string
+  openai_model: string
+  openai_translation_model: string
+  openai_tts_model: string
+  openai_tts_voice: string
+  whisper_model: string
+  whisper_device: string
+  whisper_compute_type: string
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'

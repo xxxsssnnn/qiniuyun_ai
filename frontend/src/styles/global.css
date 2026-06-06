@@ -27,7 +27,7 @@ html, body, #root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-button, input {
+button, input, select {
   font: inherit;
 }
 
@@ -57,7 +57,8 @@ button {
 
 .app-kicker,
 .badge,
-.panel-badge {
+.panel-badge,
+.setting-pill {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -133,7 +134,8 @@ button {
 .page-hero,
 .hero,
 .panel,
-.status-card {
+.status-card,
+.setting-card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 24px;
@@ -155,6 +157,7 @@ button {
 .page-hero h2,
 .panel h2,
 .panel h3,
+.panel h4,
 .app-header h1 {
   margin: 0;
 }
@@ -164,7 +167,8 @@ button {
 .panel p,
 .muted,
 .feature-list,
-small {
+small,
+.setting-hint {
   color: var(--muted);
 }
 
@@ -176,14 +180,21 @@ small {
 .subtitle-topline,
 .live-stat,
 .glossary-item,
-.meta-chip {
+.meta-chip,
+.setting-card-header,
+.setting-actions,
+.setting-field,
+.settings-status-grid,
+.settings-form-grid {
   display: flex;
   gap: 0.75rem;
 }
 
 .hero-actions,
 .glossary-form,
-.glossary-actions {
+.glossary-actions,
+.setting-actions,
+.settings-form-grid {
   flex-wrap: wrap;
 }
 
@@ -193,7 +204,8 @@ small {
 }
 
 .meta-chip,
-.live-stat {
+.live-stat,
+.status-card {
   flex-direction: column;
   justify-content: center;
   padding: 0.9rem 1rem;
@@ -208,7 +220,8 @@ small {
 }
 
 .panel-grid,
-.content-grid {
+.content-grid,
+.setting-grid {
   display: grid;
   gap: 1rem;
 }
@@ -218,7 +231,8 @@ small {
 }
 
 .two-cols,
-.content-grid {
+.content-grid,
+.settings-status-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -227,7 +241,8 @@ small {
 }
 
 .panel,
-.status-card {
+.status-card,
+.setting-card {
   padding: 1.25rem;
 }
 
@@ -268,7 +283,8 @@ small {
 }
 
 .subtitle-topline,
-.panel-header {
+.panel-header,
+.setting-card-header {
   align-items: center;
   justify-content: space-between;
 }
@@ -300,7 +316,10 @@ small {
   gap: 0.35rem;
 }
 
-.glossary-form input {
+.glossary-form input,
+.glossary-form select,
+.setting-card select,
+.setting-field input {
   flex: 1 1 180px;
   min-width: 0;
   border-radius: 14px;
@@ -308,6 +327,69 @@ small {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   padding: 0.85rem 0.95rem;
+}
+
+.setting-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.setting-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  border-radius: 20px;
+}
+
+.setting-card-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.setting-card-header p {
+  margin: 0.25rem 0 0;
+}
+
+.setting-summary-box,
+.setting-warning-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(124, 156, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.setting-summary-box strong,
+.setting-warning-box strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.setting-field {
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.setting-field-label {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.settings-grid-clean {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.75rem;
+}
+
+.settings-actions-clean {
+  margin-top: 1rem;
+  align-items: center;
+}
+
+.setting-saved {
+  color: #8ef0c5;
+}
+
+.setting-error {
+  color: #ffb1bd;
 }
 
 .empty-state {
@@ -328,11 +410,36 @@ small {
   padding-left: 1.2rem;
 }
 
+.compact-list {
+  margin-top: 0.5rem;
+}
+
+.settings-page .page-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 1rem;
+}
+
+.settings-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-status-grid .status-card strong {
+  font-size: 1.2rem;
+  margin: 0.25rem 0;
+}
+
 @media (max-width: 1024px) {
   .panel-grid,
   .content-grid,
   .hero-grid,
-  .two-cols {
+  .two-cols,
+  .setting-grid,
+  .settings-grid-clean,
+  .settings-page .page-hero,
+  .settings-status-grid {
     grid-template-columns: 1fr;
   }
 
@@ -351,7 +458,8 @@ small {
   .page-hero,
   .hero,
   .panel,
-  .status-card {
+  .status-card,
+  .setting-card {
     border-radius: 18px;
   }
 
