@@ -47,6 +47,8 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
 @app.websocket("/api/v1/transcripts/ws/{session_id}")
+@app.websocket("/api/transcripts/ws/{session_id}")
+@app.websocket("/api/v1/v1/transcripts/ws/{session_id}")
 async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
     await manager.connect(session_id, websocket)
     session = audio_sessions.get_or_create(session_id)

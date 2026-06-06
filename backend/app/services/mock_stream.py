@@ -5,43 +5,58 @@ from app.services.connection_manager import ConnectionManager
 
 
 async def start_mock_stream(manager: ConnectionManager, session_id: str) -> None:
+    opening_id = str(uuid.uuid4())
+    architecture_id = str(uuid.uuid4())
     samples = [
         {
             "type": "chunk",
             "payload": {
-                "chunk_id": str(uuid.uuid4()),
+                "chunk_id": opening_id,
                 "session_id": session_id,
-                "source_text": "Welcome everyone to this technical talk.",
-                "translated_text": "欢迎大家来到这场技术分享。",
-                "is_final": False,
-                "start_ms": 0,
-                "end_ms": 1800,
-                "revision": 0,
-            },
-        },
-        {
-            "type": "translated",
-            "payload": {
-                "chunk_id": str(uuid.uuid4()),
-                "session_id": session_id,
-                "source_text": "Today we will discuss real-time translation architecture.",
-                "translated_text": "今天我们将讨论实时翻译架构。",
-                "is_final": False,
-                "start_ms": 1800,
-                "end_ms": 4200,
+                "sourceText": "Welcome everyone to this technical talk.",
+                "translatedText": "欢迎大家来到这场技术分享。",
+                "isFinal": False,
+                "startMs": 0,
+                "endMs": 1800,
                 "revision": 0,
             },
         },
         {
             "type": "revision",
             "payload": {
-                "chunk_id": str(uuid.uuid4()),
+                "chunk_id": opening_id,
                 "session_id": session_id,
-                "source_text": "Today we will discuss real-time interpretation architecture.",
-                "translated_text": "今天我们将讨论实时同传架构。",
-                "is_final": True,
-                "start_ms": 1800,
-                "end_ms": 4200,
+                "sourceText": "Welcome everyone to this technical talk about AI interpretation.",
+                "translatedText": "欢迎大家来到这场关于 AI 同声传译的技术分享。",
+                "isFinal": True,
+                "startMs": 0,
+                "endMs": 2600,
+                "revision": 1,
+            },
+        },
+        {
+            "type": "chunk",
+            "payload": {
+                "chunk_id": architecture_id,
+                "session_id": session_id,
+                "sourceText": "Today we will discuss real-time translation architecture.",
+                "translatedText": "今天我们将讨论实时翻译架构。",
+                "isFinal": False,
+                "startMs": 2600,
+                "endMs": 5200,
+                "revision": 0,
+            },
+        },
+        {
+            "type": "correction",
+            "payload": {
+                "chunk_id": architecture_id,
+                "session_id": session_id,
+                "previousRevision": 0,
+                "currentRevision": 1,
+                "sourceText": "Today we will discuss real-time interpretation architecture.",
+                "translatedText": "今天我们将讨论实时同传架构。",
+                "isFinal": True,
                 "revision": 1,
             },
         },

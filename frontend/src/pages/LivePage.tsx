@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
-import { addGlossaryEntry, deleteGlossaryEntry, fetchGlossary, updateGlossaryEntry, type GlossaryEntry, fetchLatestChunk } from '../services/api'
+import { fetchGlossary, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
-import { createRealtimeSocket, type RealtimeMessage } from '../services/ws'
+import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
 
 type SubtitleItem = {
   id: string
@@ -11,6 +11,8 @@ type SubtitleItem = {
   translatedText: string
   isFinal: boolean
   revision: number
+  correctionCount: number
+  updatedAt: number
 }
 
 const statusLabels = {
@@ -27,53 +29,66 @@ export function LivePage() {
   const [audioState, setAudioState] = useState<AudioCaptureState>('idle')
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
-  const [socket, setSocket] = useState<WebSocket | null>(null)
+  const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
+  const correctionTotal = subtitles.reduce((total, item) => total + item.correctionCount, 0)
 
   useEffect(() => {
     setConnectionStatus('connecting')
-    const realtimeSocket = createRealtimeSocket(sessionId)
-    setSocket(realtimeSocket)
+    const realtimeSocket = createRealtimeSocketWithFallback(sessionId, {
+      onOpen: () => setConnectionStatus('connected'),
+      onClose: () => setConnectionStatus('disconnected'),
+      onError: () => setConnectionStatus('disconnected'),
+      onFallback: (url) => {
+        setConnectionStatus('connecting')
+        setMessages((prev) => [...prev.slice(-29), { type: 'status', session_id: sessionId, payload: { message: `retry websocket: ${url}` } }])
+      },
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as RealtimeMessage & { payload?: any }
+          setMessages((prev) => [...prev.slice(-29), message])
 
-    realtimeSocket.onopen = () => setConnectionStatus('connected')
-    realtimeSocket.onclose = () => setConnectionStatus('disconnected')
-    realtimeSocket.onerror = () => setConnectionStatus('disconnected')
-    realtimeSocket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data as string) as RealtimeMessage & { payload?: any }
-        setMessages((prev) => [...prev.slice(-29), message])
-
-        if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
-          const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string }
-          if (payload?.chunk_id) {
-            setSubtitles((prev) => {
-              const next = prev.filter((item) => item.id !== payload.chunk_id)
-              next.unshift({
-                id: payload.chunk_id!,
-                sourceText: payload.sourceText ?? '',
-                translatedText: payload.translatedText ?? '',
-                isFinal: payload.isFinal ?? false,
-                revision: payload.revision ?? 0,
+          if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
+            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string }
+            if (payload?.chunk_id) {
+              setSubtitles((prev) => {
+                const existing = prev.find((item) => item.id === payload.chunk_id)
+                const sourceText = payload.sourceText ?? (payload as any).source_text ?? existing?.sourceText ?? ''
+                const translatedText = payload.translatedText ?? (payload as any).translated_text ?? existing?.translatedText ?? ''
+                const isFinal = payload.isFinal ?? (payload as any).is_final ?? existing?.isFinal ?? false
+                const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
+                const updated: SubtitleItem = {
+                  id: payload.chunk_id!,
+                  sourceText,
+                  translatedText,
+                  isFinal,
+                  revision,
+                  correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
+                  updatedAt: Date.now(),
+                }
+                return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 10)
               })
-              return next.slice(0, 10)
-            })
+            }
           }
+        } catch {
+          // ignore malformed payloads in the scaffold stage
         }
-      } catch {
-        // ignore malformed payloads in the scaffold stage
-      }
-    }
+      },
+    })
+    setSocket(realtimeSocket)
 
     void fetchLatestChunk().then((chunk) => {
       if (!chunk) return
       setSubtitles([
         {
           id: chunk.chunk_id,
-          sourceText: chunk.source_text,
-          translatedText: chunk.translated_text,
-          isFinal: chunk.is_final,
+          sourceText: chunk.sourceText ?? chunk.source_text ?? '',
+          translatedText: chunk.translatedText ?? chunk.translated_text ?? '',
+          isFinal: chunk.isFinal ?? chunk.is_final ?? false,
           revision: chunk.revision,
+          correctionCount: 0,
+          updatedAt: Date.now(),
         },
       ])
     })
@@ -85,24 +100,19 @@ export function LivePage() {
     void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))
   }, [])
 
-  const refreshGlossary = async () => {
-    const items = await fetchGlossary()
-    setGlossary(items)
-  }
-
   const handleStartDemo = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    if (!socket || socket.current.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'start_demo' }))
     setMessages((prev) => [...prev.slice(-29), { type: 'status', session_id: sessionId, payload: { message: 'demo requested' } }])
   }
 
   const handleStartAudio = async () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN || audioState === 'recording' || audioState === 'starting') return
+    if (!socket || socket.current.readyState !== WebSocket.OPEN || audioState === 'recording' || audioState === 'starting') return
     try {
       setAudioState('starting')
       socket.send(JSON.stringify({ type: 'start_audio', session_id: sessionId }))
       const session = await startAudioCapture((chunk) => {
-        if (socket.readyState === WebSocket.OPEN) {
+        if (socket.current.readyState === WebSocket.OPEN) {
           socket.send(chunk)
         }
       })
@@ -119,7 +129,7 @@ export function LivePage() {
     audioSession?.stop()
     setAudioSession(null)
     setAudioState('stopped')
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (socket && socket.current.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: 'stop_audio', session_id: sessionId }))
     }
     setMessages((prev) => [...prev.slice(-29), { type: 'audio', session_id: sessionId, payload: { message: 'microphone recording stopped' } }])
@@ -142,6 +152,7 @@ export function LivePage() {
           <div className="live-stat"><span>连接</span><strong>{connectionStatus}</strong></div>
           <div className="live-stat"><span>音频</span><strong>{statusLabels[audioState]}</strong></div>
           <div className="live-stat"><span>字幕</span><strong>{subtitles.length}</strong></div>
+          <div className="live-stat"><span>修正</span><strong>{correctionTotal}</strong></div>
           <div className="live-stat"><span>术语</span><strong>{glossary.length}</strong></div>
         </div>
       </section>
@@ -158,7 +169,7 @@ export function LivePage() {
           <div className="subtitle-list">
             {subtitles.length === 0 ? <div className="empty-state"><p>等待字幕流…</p></div> : subtitles.map((item) => (
               <div key={item.id} className={`subtitle-item ${item.isFinal ? 'final' : 'draft'}`}>
-                <div className="subtitle-topline"><span>{item.isFinal ? 'FINAL' : 'DRAFT'}</span><small>revision {item.revision}</small></div>
+                <div className="subtitle-topline"><span>{item.isFinal ? 'FINAL' : 'DRAFT'}</span><small>revision {item.revision} · 修正 {item.correctionCount} 次</small></div>
                 <p className="source">{item.sourceText}</p>
                 <p className="translation">{item.translatedText}</p>
               </div>
