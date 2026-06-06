@@ -23,8 +23,9 @@
 - 字幕修正与版本记录
 - 术语库与上下文记忆
 - 数据库持久化
+- 浏览器端自动播报
 
-当前仍使用模拟 ASR / 翻译 / TTS 作为占位实现，后续可以无缝替换为真实模型或云服务。
+当前仍使用模拟 ASR / 翻译 / TTS 作为占位实现，但已保留真实 provider 接入入口，可通过环境变量切换。
 
 ## 前端页面拆分
 
@@ -139,10 +140,26 @@ WHISPER_COMPUTE_TYPE=int8
 
 ```bash
 TRANSLATION_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_TRANSLATION_MODEL=gpt-4o-mini
 ```
 
 如果启用 OpenAI translation provider，系统会尝试调用 OpenAI 兼容的翻译接口。
 如果翻译服务不可用，会自动回退到 mock 翻译，保证项目可运行。
+
+## TTS 配置
+
+当前默认使用 mock TTS。可以通过环境变量切换：
+
+```bash
+TTS_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_TTS_VOICE=alloy
+```
+
+如果启用 OpenAI TTS provider，系统会尝试返回可播放的音频字节。
+如果 TTS 服务不可用，会自动回退到 mock TTS，保证项目可运行。
 
 ## 字幕修正
 
@@ -187,10 +204,11 @@ DATABASE_URL=sqlite:///./app.db
 - 确认页面能连接 WebSocket
 - 确认术语库接口可读写
 - 确认麦克风权限可正常申请
+- 确认浏览器支持语音播报（可选）
 
 ## 后续计划
 
-1. 接入真实翻译服务
-2. 接入真实 TTS 服务
-3. 增加字幕自动修正机制
-4. 增加术语库与上下文记忆的检索增强
+1. 增加字幕自动修正机制
+2. 增加术语库与上下文记忆的检索增强
+3. 将 Settings 页真正联通到后端配置持久化
+4. 优化 Whisper 音频转码与稳定性
