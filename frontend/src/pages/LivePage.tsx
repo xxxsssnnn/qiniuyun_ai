@@ -3,8 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { StatusCard } from '../components/StatusCard'
 import { fetchGlossary, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
-import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
-import { speakText } from '../services/speech'
+import { closeRealtimeSocket, createRealtimeSocket, type RealtimeMessage } from '../services/ws'
 
 type SubtitleItem = {
   id: string
@@ -100,8 +99,8 @@ export function LivePage() {
       ])
     })
 
-    return () => realtimeSocket.close()
-  }, [sessionId, autoSpeak, lastSpoken])
+    return () => closeRealtimeSocket(realtimeSocket)
+  }, [sessionId])
 
   useEffect(() => {
     void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))

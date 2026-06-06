@@ -70,3 +70,14 @@ export function createRealtimeSocketWithFallback(
     },
   }
 }
+
+export function closeRealtimeSocket(socket: WebSocket) {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.close()
+    return
+  }
+
+  if (socket.readyState === WebSocket.CONNECTING) {
+    socket.addEventListener('open', () => socket.close(), { once: true })
+  }
+}
