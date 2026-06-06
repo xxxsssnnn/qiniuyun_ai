@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from app.services.asr import ASRProvider
 from app.services.connection_manager import ConnectionManager
+from app.services.glossary import glossary_manager
 from app.services.revision_manager import revision_manager
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.translation import TranslationProvider
@@ -37,7 +38,8 @@ class TranscriptionProcessor:
     async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
         index = next(self._counter)
         asr_result = await self.asr_provider.transcribe(chunk, session_id)
-        translation_result = await self.translation_provider.translate(asr_result.text)
+        glossary_manager.remember_context(session_id, asr_result.text)
+        translation_result = await self.translation_provider.translate(asr_result.text, session_id=session_id)
         if self.tts_provider and translation_result.is_final:
             await self.tts_provider.speak(translation_result.translated_text)
         is_final = asr_result.is_final or index % 3 == 0
@@ -71,21 +73,3 @@ class TranscriptionProcessor:
                 },
             },
         )
-        if is_final:
-            correction_event = revision_manager.rollback(event.chunk_id, event.revision)
-            if correction_event:
-                await self.manager.broadcast(
-                    session_id,
-                    {
-                        "type": "correction",
-                        "session_id": session_id,
-                        "payload": {
-                            "chunk_id": correction_event.chunk_id,
-                            "previousRevision": correction_event.previous_revision,
-                            "currentRevision": correction_event.current_revision,
-                            "sourceText": correction_event.source_text,
-                            "translatedText": correction_event.translated_text,
-                            "isFinal": correction_event.is_final,
-                        },
-                    },
-                )
