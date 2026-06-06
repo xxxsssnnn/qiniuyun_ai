@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
+import { addGlossaryEntry, deleteGlossaryEntry, fetchGlossary, updateGlossaryEntry, type GlossaryEntry } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { createRealtimeSocket, type RealtimeMessage } from '../services/ws'
 
@@ -20,6 +21,13 @@ export function HomePage() {
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
+  const [newSource, setNewSource] = useState('')
+  const [newTarget, setNewTarget] = useState('')
+  const [newNote, setNewNote] = useState('')
+  const [editingSource, setEditingSource] = useState('')
+  const [editingTarget, setEditingTarget] = useState('')
+  const [editingNote, setEditingNote] = useState('')
 
   useEffect(() => {
     setConnectionStatus('connecting')
@@ -34,7 +42,7 @@ export function HomePage() {
         const message = JSON.parse(event.data as string) as RealtimeMessage & { payload?: any }
         setMessages((prev) => [...prev.slice(-19), message])
 
-        if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision') {
+        if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
           const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string }
           if (payload?.chunk_id) {
             setSubtitles((prev) => {
@@ -57,6 +65,15 @@ export function HomePage() {
 
     return () => realtimeSocket.close()
   }, [sessionId])
+
+  useEffect(() => {
+    void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))
+  }, [])
+
+  const refreshGlossary = async () => {
+    const items = await fetchGlossary()
+    setGlossary(items)
+  }
 
   const handleStartDemo = () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return
@@ -91,6 +108,33 @@ export function HomePage() {
       socket.send(JSON.stringify({ type: 'stop_audio', session_id: sessionId }))
     }
     setMessages((prev) => [...prev.slice(-19), { type: 'audio', session_id: sessionId, payload: { message: 'microphone recording stopped' } }])
+  }
+
+  const handleAddGlossary = async () => {
+    if (!newSource.trim() || !newTarget.trim()) return
+    const created = await addGlossaryEntry({ source: newSource.trim(), target: newTarget.trim(), note: newNote.trim() })
+    setGlossary((prev) => [created, ...prev])
+    setNewSource('')
+    setNewTarget('')
+    setNewNote('')
+  }
+
+  const handleEditGlossary = async () => {
+    if (!editingSource.trim() || !editingTarget.trim()) return
+    const updated = await updateGlossaryEntry(editingSource.trim(), {
+      source: editingSource.trim(),
+      target: editingTarget.trim(),
+      note: editingNote.trim(),
+    })
+    setGlossary((prev) => prev.map((item) => (item.source === editingSource.trim() ? updated : item)))
+    setEditingSource('')
+    setEditingTarget('')
+    setEditingNote('')
+  }
+
+  const handleDeleteGlossary = async (source: string) => {
+    await deleteGlossaryEntry(source)
+    await refreshGlossary()
   }
 
   return (
@@ -140,6 +184,48 @@ export function HomePage() {
           </div>
         </article>
 
+        <article className="panel glossary-panel">
+          <h2>术语库</h2>
+          <div className="glossary-form">
+            <input placeholder="原文术语" value={newSource} onChange={(e) => setNewSource(e.target.value)} />
+            <input placeholder="目标译法" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} />
+            <input placeholder="备注" value={newNote} onChange={(e) => setNewNote(e.target.value)} />
+            <button className="primary-button" onClick={handleAddGlossary}>添加术语</button>
+          </div>
+
+          <div className="glossary-form" style={{ marginTop: '1rem' }}>
+            <input placeholder="编辑原文术语" value={editingSource} onChange={(e) => setEditingSource(e.target.value)} />
+            <input placeholder="编辑目标译法" value={editingTarget} onChange={(e) => setEditingTarget(e.target.value)} />
+            <input placeholder="编辑备注" value={editingNote} onChange={(e) => setEditingNote(e.target.value)} />
+            <button className="secondary-button" onClick={handleEditGlossary}>保存修改</button>
+          </div>
+
+          <div className="glossary-list">
+            {glossary.length === 0 ? (
+              <p className="muted">暂无术语，添加后会同步到后端数据库。</p>
+            ) : (
+              glossary.map((item) => (
+                <div key={item.source} className="glossary-item">
+                  <div>
+                    <strong>{item.source}</strong> → {item.target}
+                    {item.note ? <small>{item.note}</small> : null}
+                  </div>
+                  <div className="glossary-actions">
+                    <button className="secondary-button" onClick={() => {
+                      setEditingSource(item.source)
+                      setEditingTarget(item.target)
+                      setEditingNote(item.note ?? '')
+                    }}>编辑</button>
+                    <button className="secondary-button" onClick={() => void handleDeleteGlossary(item.source)}>删除</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="panel-grid">
         <article className="panel">
           <h2>最近消息</h2>
           <div className="message-list">

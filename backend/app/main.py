@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router as api_router
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.models.glossary import GlossaryItem
 from app.services.glossary import glossary_manager
 
 

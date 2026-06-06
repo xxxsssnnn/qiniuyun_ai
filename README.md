@@ -22,7 +22,7 @@
 - 演示模式
 - 字幕修正与版本记录
 - 术语库与上下文记忆
-- 数据库持久化基础结构
+- 数据库持久化
 
 当前仍使用模拟 ASR / 翻译 / TTS 作为占位实现，后续可以无缝替换为真实模型或云服务。
 
@@ -55,11 +55,6 @@ frontend/
 cd backend
 uvicorn app.main:app --reload
 ```
-
-后端启动时会自动：
-
-- 创建数据库表
-- 加载术语库到内存
 
 后端默认地址：
 
@@ -137,7 +132,8 @@ TRANSLATION_PROVIDER=openai
 ## 术语库与上下文记忆
 
 - 术语库支持内存模式和数据库持久化模式
-- 后端启动时会自动创建术语表并加载到内存
+- 启动后会自动建表，并从数据库加载术语到内存
+- 前端提供术语添加、编辑、删除面板，可直接同步到后端数据库
 - 每个会话会保留最近一段上下文，帮助后续翻译更稳定
 
 ## 数据库配置
@@ -148,7 +144,35 @@ TRANSLATION_PROVIDER=openai
 DATABASE_URL=sqlite:///./app.db
 ```
 
-术语库表会在后端启动时自动创建，启动完成后会自动加载到内存。
+术语库表会在启动初始化阶段创建，并用于持久化 glossary entries。
+
+## 项目启动检查清单
+
+### 后端
+
+- 安装依赖
+- 设置可选环境变量 `ASR_PROVIDER`、`TRANSLATION_PROVIDER`、`DATABASE_URL`
+- 启动 `uvicorn app.main:app --reload`
+- 访问健康检查接口 `http://localhost:8000/health`
+- 连接 WebSocket `ws://localhost:8000/api/v1/transcripts/ws/demo-session`
+- 确认术语库接口 `GET /api/v1/glossary` 可正常返回
+
+### 前端
+
+- 安装依赖
+- 启动 `npm run dev`
+- 打开 `http://localhost:5173`
+- 确认页面能连接 WebSocket
+- 确认“开始演示字幕”可正常推送字幕
+- 确认术语库可新增、编辑、删除
+
+### 功能验证
+
+- 演示模式可展示字幕流
+- 麦克风采集按钮可启动/停止录音
+- 音频块可发送到后端
+- 后端可返回字幕 chunk / revision / correction 事件
+- 术语库可持久化到数据库
 
 ## 后续计划
 
