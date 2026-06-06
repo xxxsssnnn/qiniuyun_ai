@@ -83,6 +83,7 @@ npm run dev
 - `translated`：翻译结果
 - `audio`：音频状态/统计消息
 - `status`：连接状态
+- `correction`：字幕修正事件
 
 ## ASR 配置
 
@@ -121,7 +122,7 @@ TRANSLATION_PROVIDER=openai
 
 - 每个字幕片段会记录修订版本
 - 后续识别或翻译修正时可以保留历史版本
-- 后续可以在此基础上继续做自动回滚与局部替换
+- 已预留 correction 事件结构，后面可以直接扩展成自动局部替换
 
 ## 后续计划
 
