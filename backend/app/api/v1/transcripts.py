@@ -4,18 +4,18 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.schemas.common import TranscriptChunkCreate, TranscriptChunkRead
 from app.schemas.realtime import StreamTextChunk
-from app.services.asr import MockASRProvider
 from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager
 from app.services.mock_stream import start_mock_stream
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.transcription_processor import TranscriptionProcessor
 from app.services.translation import MockTranslationProvider
+from app.services.asr_factory import get_asr_provider
 
 router = APIRouter()
 buffer = TranscriptBuffer()
 manager = ConnectionManager()
-processor = TranscriptionProcessor(manager, buffer, MockASRProvider(), MockTranslationProvider())
+processor = TranscriptionProcessor(manager, buffer, get_asr_provider(), MockTranslationProvider())
 
 
 @router.post("/chunks", response_model=TranscriptChunkRead)

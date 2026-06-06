@@ -7,6 +7,8 @@ class ASRResult:
     text: str
     is_final: bool = False
     confidence: float = 0.0
+    language: str = "en"
+    revision: int = 0
 
 
 class ASRProvider(ABC):
@@ -25,4 +27,6 @@ class MockASRProvider(ASRProvider):
             text=f"[ASR] detected speech segment {self._counter}",
             is_final=self._counter % 3 == 0,
             confidence=0.72,
+            language="en",
+            revision=0,
         )
