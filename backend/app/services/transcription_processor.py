@@ -1,5 +1,6 @@
 import itertools
 from dataclasses import dataclass
+from typing import Optional
 
 from app.services.asr import ASRProvider
 from app.services.connection_manager import ConnectionManager
@@ -26,7 +27,7 @@ class TranscriptionProcessor:
         buffer: TranscriptBuffer,
         asr_provider: ASRProvider,
         translation_provider: TranslationProvider,
-        tts_provider: TTSProvider | None = None,
+        tts_provider: Optional[TTSProvider] = None,
     ) -> None:
         self.manager = manager
         self.buffer = buffer
