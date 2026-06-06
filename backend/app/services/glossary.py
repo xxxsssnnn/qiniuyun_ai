@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
-from typing import Dict, List
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.glossary import GlossaryItem
@@ -24,7 +24,7 @@ class GlossaryManager:
         self._entries[entry.source] = entry
         return entry
 
-    def update_entry(self, source: str, target: str, note: str = "") -> GlossaryEntry | None:
+    def update_entry(self, source: str, target: str, note: str = "") -> Optional[GlossaryEntry]:
         key = source.lower()
         if key not in self._entries:
             return None
@@ -46,7 +46,7 @@ class GlossaryManager:
         self._entries[entry.source] = entry
         return entry
 
-    def update_entry_db(self, session: Session, source: str, target: str, note: str = "") -> GlossaryEntry | None:
+    def update_entry_db(self, session: Session, source: str, target: str, note: str = "") -> Optional[GlossaryEntry]:
         item = session.scalar(select(GlossaryItem).where(GlossaryItem.source == source.lower()))
         if not item:
             return None
@@ -79,20 +79,20 @@ class GlossaryManager:
     def remove_entry(self, source: str) -> None:
         self._entries.pop(source.lower(), None)
 
-    def get_entry(self, source: str) -> GlossaryEntry | None:
+    def get_entry(self, source: str) -> Optional[GlossaryEntry]:
         return self._entries.get(source.lower())
 
-    def list_entries(self) -> list[GlossaryEntry]:
+    def list_entries(self) -> List[GlossaryEntry]:
         return list(self._entries.values())
 
-    def remember_context(self, session_id: str, text: str, limit: int = 12) -> list[str]:
+    def remember_context(self, session_id: str, text: str, limit: int = 12) -> List[str]:
         history = self._context_history.setdefault(session_id, [])
         history.append(text)
         if len(history) > limit:
             del history[:-limit]
         return list(history)
 
-    def get_context(self, session_id: str) -> list[str]:
+    def get_context(self, session_id: str) -> List[str]:
         return list(self._context_history.get(session_id, []))
 
     def apply_glossary(self, text: str) -> str:

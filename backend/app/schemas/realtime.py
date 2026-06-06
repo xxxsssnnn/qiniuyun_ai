@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -20,8 +22,8 @@ class StreamTextChunk(BaseModel):
     source_text: str
     translated_text: str = ""
     is_final: bool = False
-    start_ms: int | None = None
-    end_ms: int | None = None
+    start_ms: Optional[int] = None
+    end_ms: Optional[int] = None
     revision: int = 0
 
 

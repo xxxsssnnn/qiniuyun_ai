@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -29,7 +29,7 @@ class AudioSessionStore:
             self._sessions[session_id] = AudioSessionState(session_id=session_id)
         return self._sessions[session_id]
 
-    def get(self, session_id: str) -> AudioSessionState | None:
+    def get(self, session_id: str) -> Optional[AudioSessionState]:
         return self._sessions.get(session_id)
 
     def remove(self, session_id: str) -> None:
