@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from app.services.asr import ASRProvider
+from app.services.asr import ASRProvider, ASRResult
 from app.services.connection_manager import ConnectionManager
 from app.services.glossary import glossary_manager
 from app.services.revision_manager import revision_manager
@@ -40,9 +40,13 @@ class TranscriptionProcessor:
         self._active_chunk_ids: Dict[str, str] = {}
         self._revisions: Dict[str, int] = {}
 
-    async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
+    async def handle_asr_result(
+        self,
+        session_id: str,
+        asr_result: ASRResult,
+        byte_length: int = 0,
+    ) -> None:
         index = next(self._counter)
-        asr_result = await self.asr_provider.transcribe(chunk, session_id)
         if not asr_result.text.strip() and not (asr_result.translated_text or "").strip():
             return
         if asr_result.text.strip():
@@ -99,12 +103,16 @@ class TranscriptionProcessor:
                     "translatedText": event.translated_text,
                     "isFinal": event.is_final,
                     "revision": event.revision,
-                    "byteLength": len(chunk),
+                    "byteLength": byte_length,
                     "confidence": asr_result.confidence,
                     "language": asr_result.language,
                 },
             },
         )
+
+    async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
+        asr_result = await self.asr_provider.transcribe(chunk, session_id)
+        await self.handle_asr_result(session_id, asr_result, len(chunk))
 
     async def close_session(self, session_id: str) -> None:
         await self.asr_provider.close_session(session_id)

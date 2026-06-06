@@ -35,10 +35,14 @@ LANGUAGE_NAMES = {
 class QwenRealtimeSession:
     websocket: Any
     language: str
-    results: asyncio.Queue[ASRResult] = field(default_factory=asyncio.Queue)
+    results: asyncio.Queue[ASRResult] = field(
+        default_factory=lambda: asyncio.Queue(maxsize=32)
+    )
     reader_task: asyncio.Task[None] | None = None
     source_text: str = ""
     translated_text: str = ""
+    pending_partial: ASRResult | None = None
+    finished: bool = False
 
 
 class QwenASRProvider(ASRProvider):
@@ -88,15 +92,16 @@ class QwenASRProvider(ASRProvider):
                     delta = str(event.get("delta", ""))
                     if delta:
                         session.translated_text += delta
-                        await session.results.put(
-                            ASRResult(
-                                text=session.source_text,
-                                translated_text=session.translated_text,
-                                is_final=False,
-                                confidence=1.0,
-                                language=session.language,
-                            )
+                        partial = ASRResult(
+                            text=session.source_text,
+                            translated_text=session.translated_text,
+                            is_final=False,
+                            confidence=1.0,
+                            language=session.language,
                         )
+                        session.pending_partial = partial
+                        if session.results.empty():
+                            await session.results.put(partial)
                 elif event_type in {"response.text.done", "response.audio_transcript.done"}:
                     translated = str(event.get("text") or event.get("transcript") or session.translated_text).strip()
                     if translated:
@@ -109,6 +114,7 @@ class QwenASRProvider(ASRProvider):
                                 language=session.language,
                             )
                         )
+                    session.pending_partial = None
                     session.source_text = ""
                     session.translated_text = ""
                 elif event_type == "error":
@@ -174,7 +180,7 @@ class QwenASRProvider(ASRProvider):
                             "prefix_padding_ms": 300,
                             "silence_duration_ms": 500,
                             "create_response": True,
-                            "interrupt_response": True,
+                            "interrupt_response": False,
                         },
                     },
                 }
@@ -210,6 +216,14 @@ class QwenASRProvider(ASRProvider):
             session.reader_task.cancel()
 
     async def transcribe(self, audio_chunk: bytes, session_id: str) -> ASRResult:
+        await self.send_audio(audio_chunk, session_id)
+        session = await self._get_session(session_id)
+        try:
+            return session.results.get_nowait()
+        except asyncio.QueueEmpty:
+            return ASRResult(text="", translated_text="", language=self.language)
+
+    async def send_audio(self, audio_chunk: bytes, session_id: str) -> None:
         try:
             session = await self._get_session(session_id)
             await session.websocket.send(
@@ -221,21 +235,32 @@ class QwenASRProvider(ASRProvider):
                     }
                 )
             )
-            try:
-                return await asyncio.wait_for(session.results.get(), timeout=0.08)
-            except asyncio.TimeoutError:
-                return ASRResult(text="", translated_text="", language=self.language)
         except Exception as exc:
-            return ASRResult(
-                text=f"[Qwen ASR unavailable] {exc}",
-                is_final=True,
-                language=self.language,
-            )
+            session = self._sessions.get(session_id)
+            if session:
+                await session.results.put(
+                    ASRResult(
+                        text=f"[Qwen ASR unavailable] {exc}",
+                        is_final=True,
+                        language=self.language,
+                    )
+                )
+            else:
+                raise
 
-    async def close_session(self, session_id: str) -> None:
-        session = self._sessions.pop(session_id, None)
-        if not session:
+    async def receive_result(self, session_id: str) -> ASRResult:
+        session = await self._get_session(session_id)
+        result = await session.results.get()
+        if not result.is_final and session.pending_partial is not None:
+            result = session.pending_partial
+            session.pending_partial = None
+        return result
+
+    async def finish_session(self, session_id: str) -> None:
+        session = self._sessions.get(session_id)
+        if not session or session.finished:
             return
+        session.finished = True
         try:
             await session.websocket.send(
                 json.dumps(
@@ -247,6 +272,13 @@ class QwenASRProvider(ASRProvider):
             )
         except Exception:
             pass
+
+    async def close_session(self, session_id: str) -> None:
+        session = self._sessions.get(session_id)
+        if not session:
+            return
+        await self.finish_session(session_id)
+        self._sessions.pop(session_id, None)
         await session.websocket.close()
         if session.reader_task:
             session.reader_task.cancel()
