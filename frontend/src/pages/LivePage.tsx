@@ -4,6 +4,7 @@ import { StatusCard } from '../components/StatusCard'
 import { fetchGlossary, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
+import { speakText } from '../services/speech'
 
 type SubtitleItem = {
   id: string
@@ -32,6 +33,8 @@ export function LivePage() {
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
+  const [autoSpeak, setAutoSpeak] = useState(true)
+  const [lastSpoken, setLastSpoken] = useState('')
   const correctionTotal = subtitles.reduce((total, item) => total + item.correctionCount, 0)
 
   useEffect(() => {
@@ -67,6 +70,10 @@ export function LivePage() {
                   correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
                   updatedAt: Date.now(),
                 }
+                if (autoSpeak && translatedText && translatedText !== lastSpoken) {
+                  const spoke = speakText(translatedText)
+                  if (spoke) setLastSpoken(translatedText)
+                }
                 return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 10)
               })
             }
@@ -94,7 +101,7 @@ export function LivePage() {
     })
 
     return () => realtimeSocket.close()
-  }, [sessionId])
+  }, [sessionId, autoSpeak, lastSpoken])
 
   useEffect(() => {
     void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))
@@ -146,6 +153,7 @@ export function LivePage() {
             <button className="primary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>开始演示字幕</button>
             <button className="secondary-button" onClick={handleStartAudio} disabled={connectionStatus !== 'connected' || audioState === 'recording' || audioState === 'starting'}>开始采集麦克风</button>
             <button className="secondary-button" onClick={handleStopAudio} disabled={audioState !== 'recording'}>停止采集</button>
+            <button className="secondary-button" onClick={() => setAutoSpeak((prev) => !prev)}>{autoSpeak ? '关闭自动播报' : '开启自动播报'}</button>
           </div>
         </div>
         <div className="hero-side panel">
@@ -154,6 +162,7 @@ export function LivePage() {
           <div className="live-stat"><span>字幕</span><strong>{subtitles.length}</strong></div>
           <div className="live-stat"><span>修正</span><strong>{correctionTotal}</strong></div>
           <div className="live-stat"><span>术语</span><strong>{glossary.length}</strong></div>
+          <div className="live-stat"><span>播报</span><strong>{autoSpeak ? '开启' : '关闭'}</strong></div>
         </div>
       </section>
 
