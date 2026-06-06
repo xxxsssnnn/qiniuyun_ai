@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
 import { fetchGlossary, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
-import { speakText } from '../services/speech'
+import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
 
 type SubtitleItem = {
@@ -34,7 +34,8 @@ export function LivePage() {
   const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [autoSpeak, setAutoSpeak] = useState(true)
-  const [lastSpoken, setLastSpoken] = useState('')
+  const autoSpeakRef = useRef(true)
+  const lastSpokenRef = useRef('')
   const correctionTotal = subtitles.reduce((total, item) => total + item.correctionCount, 0)
 
   useEffect(() => {
@@ -70,9 +71,9 @@ export function LivePage() {
                   correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
                   updatedAt: Date.now(),
                 }
-                if (autoSpeak && translatedText && translatedText !== lastSpoken) {
+                if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
                   const spoke = speakText(translatedText)
-                  if (spoke) setLastSpoken(translatedText)
+                  if (spoke) lastSpokenRef.current = translatedText
                 }
                 return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 10)
               })
@@ -100,7 +101,10 @@ export function LivePage() {
       ])
     })
 
-    return () => realtimeSocket.close()
+    return () => {
+      realtimeSocket.close()
+      stopSpeaking()
+    }
   }, [sessionId])
 
   useEffect(() => {
@@ -142,6 +146,16 @@ export function LivePage() {
     setMessages((prev) => [...prev.slice(-29), { type: 'audio', session_id: sessionId, payload: { message: 'microphone recording stopped' } }])
   }
 
+  const handleToggleAutoSpeak = () => {
+    const nextAutoSpeak = !autoSpeakRef.current
+    autoSpeakRef.current = nextAutoSpeak
+    setAutoSpeak(nextAutoSpeak)
+
+    if (!nextAutoSpeak) {
+      stopSpeaking()
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="page-hero hero-grid">
@@ -153,7 +167,7 @@ export function LivePage() {
             <button className="primary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>开始演示字幕</button>
             <button className="secondary-button" onClick={handleStartAudio} disabled={connectionStatus !== 'connected' || audioState === 'recording' || audioState === 'starting'}>开始采集麦克风</button>
             <button className="secondary-button" onClick={handleStopAudio} disabled={audioState !== 'recording'}>停止采集</button>
-            <button className="secondary-button" onClick={() => setAutoSpeak((prev) => !prev)}>{autoSpeak ? '关闭自动播报' : '开启自动播报'}</button>
+            <button className="secondary-button" onClick={handleToggleAutoSpeak}>{autoSpeak ? '关闭自动播报' : '开启自动播报'}</button>
           </div>
         </div>
         <div className="hero-side panel">

@@ -12,3 +12,9 @@ export function speakText(text: string, lang = 'zh-CN') {
   window.speechSynthesis.speak(utterance)
   return true
 }
+
+export function stopSpeaking() {
+  if (!canUseSpeechSynthesis()) return false
+  window.speechSynthesis.cancel()
+  return true
+}
