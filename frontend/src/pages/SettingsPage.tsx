@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { fetchHealth } from '../services/api'
+import { fetchHealth, fetchSettings, updateSettings } from '../services/api'
 
 type ProviderChoice = 'mock' | 'whisper' | 'openai'
 
@@ -9,10 +9,22 @@ export function SettingsPage() {
   const [asrProvider, setAsrProvider] = useState<ProviderChoice>('mock')
   const [translationProvider, setTranslationProvider] = useState<ProviderChoice>('mock')
   const [ttsProvider, setTtsProvider] = useState<ProviderChoice>('mock')
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     void fetchHealth().then((res) => setHealth(res.status)).catch(() => setHealth('offline'))
+    void fetchSettings().then((settings) => {
+      setAsrProvider((settings.asr_provider as ProviderChoice) ?? 'mock')
+      setTranslationProvider((settings.translation_provider as ProviderChoice) ?? 'mock')
+      setTtsProvider((settings.tts_provider as ProviderChoice) ?? 'mock')
+    }).catch(() => undefined)
   }, [])
+
+  const handleSave = async () => {
+    await updateSettings({ asr_provider: asrProvider, translation_provider: translationProvider, tts_provider: ttsProvider })
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1800)
+  }
 
   return (
     <main className="page-shell">
@@ -43,15 +55,17 @@ export function SettingsPage() {
               <option value="mock">TTS Mock</option>
               <option value="openai">TTS OpenAI</option>
             </select>
+            <button className="primary-button" onClick={handleSave}>保存配置</button>
           </div>
+          {saved ? <p className="muted">配置已保存。</p> : null}
         </article>
       </section>
 
       <section className="panel">
         <h3>配置说明</h3>
         <ul className="feature-list">
-          <li>这些选择当前主要用于展示和后续扩展。</li>
-          <li>后面可以把它们同步到本地存储或后端配置接口。</li>
+          <li>这些选择现在会保存到后端配置表。</li>
+          <li>后续可以把运行时 provider 改成读取这个配置。</li>
           <li>也可以按项目模式和演示模式做切换。</li>
         </ul>
       </section>
