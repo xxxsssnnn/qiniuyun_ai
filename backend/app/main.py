@@ -5,11 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
 from app.core.config import settings
+from app.core.database import Base, engine
+from app.models.glossary import GlossaryItem
+from app.services.glossary import glossary_manager
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # 预留启动/关闭资源位，例如 Redis、数据库、AI 客户端等
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        glossary_manager.load_entries_from_db(connection)
     yield
 
 
