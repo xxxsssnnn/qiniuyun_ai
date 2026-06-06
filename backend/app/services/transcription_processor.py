@@ -1,6 +1,6 @@
-import itertools
 from dataclasses import dataclass
 
+from app.services.asr import ASRProvider, MockASRProvider
 from app.services.connection_manager import ConnectionManager
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 
@@ -14,22 +14,22 @@ class TranscriptEvent:
     revision: int = 0
 
 
-class MockTranscriptionProcessor:
-    def __init__(self, manager: ConnectionManager, buffer: TranscriptBuffer) -> None:
+class TranscriptionProcessor:
+    def __init__(self, manager: ConnectionManager, buffer: TranscriptBuffer, asr_provider: ASRProvider | None = None) -> None:
         self.manager = manager
         self.buffer = buffer
-        self._counter = itertools.count(1)
+        self.asr_provider = asr_provider or MockASRProvider()
+        self._counter = 0
 
     async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
-        index = next(self._counter)
-        source_text = f"[ASR] detected speech segment {index}"
-        translated_text = f"[翻译] 检测到第 {index} 段语音"
-        is_final = index % 3 == 0
+        self._counter += 1
+        result = await self.asr_provider.transcribe(chunk, session_id)
+        translated_text = f"[翻译] {result.text.replace('[ASR] ', '')}"
         event = TranscriptEvent(
-            chunk_id=f"chunk-{index}",
-            source_text=source_text,
+            chunk_id=f"chunk-{self._counter}",
+            source_text=result.text,
             translated_text=translated_text,
-            is_final=is_final,
+            is_final=result.is_final,
         )
         self.buffer.append(
             TranscriptChunk(
@@ -42,7 +42,7 @@ class MockTranscriptionProcessor:
         await self.manager.broadcast(
             session_id,
             {
-                "type": "chunk" if not is_final else "revision",
+                "type": "chunk" if not event.is_final else "revision",
                 "session_id": session_id,
                 "payload": {
                     "chunk_id": event.chunk_id,
@@ -50,6 +50,7 @@ class MockTranscriptionProcessor:
                     "translatedText": event.translated_text,
                     "isFinal": event.is_final,
                     "revision": event.revision,
+                    "confidence": result.confidence,
                     "byteLength": len(chunk),
                 },
             },
