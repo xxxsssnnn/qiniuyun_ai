@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TranscriptChunkCreate(BaseModel):
@@ -11,6 +11,8 @@ class TranscriptChunkCreate(BaseModel):
 
 
 class TranscriptChunkRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     chunk_id: str
     source_text: str
     translated_text: str = ""
