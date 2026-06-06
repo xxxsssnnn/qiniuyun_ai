@@ -33,18 +33,24 @@ export function createRealtimeSocketWithFallback(
   const urls = getRealtimeSocketUrls(sessionId)
   let index = 0
   let opened = false
+  let stopped = false
   let socket: WebSocket
 
   const connect = () => {
+    if (stopped) return
     socket = new WebSocket(urls[index])
     socket.onopen = () => {
+      if (stopped) {
+        socket.close()
+        return
+      }
       opened = true
       handlers.onOpen?.(socket)
     }
     socket.onmessage = (event) => handlers.onMessage?.(event)
     socket.onerror = (event) => handlers.onError?.(event)
     socket.onclose = (event) => {
-      if (!opened && index < urls.length - 1) {
+      if (!stopped && !opened && index < urls.length - 1) {
         index += 1
         handlers.onFallback?.(urls[index])
         connect()
@@ -66,7 +72,10 @@ export function createRealtimeSocketWithFallback(
       }
     },
     close() {
-      socket.close()
+      stopped = true
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close()
+      }
     },
   }
 }
