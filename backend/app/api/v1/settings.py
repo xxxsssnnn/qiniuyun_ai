@@ -15,8 +15,9 @@ class SettingsPayload(BaseModel):
     asr_provider: str = 'mock'
     translation_provider: str = 'mock'
     tts_provider: str = 'mock'
-    qwen_asr_model: str = 'qwen3-asr-flash-realtime'
+    qwen_asr_model: str = 'qwen3.5-omni-plus-realtime'
     qwen_asr_language: str = 'en'
+    target_language: str = 'zh'
     dashscope_region: str = 'cn'
 
 
@@ -32,8 +33,13 @@ async def get_settings(db: Session = Depends(get_db)) -> dict[str, str | bool]:
         'asr_provider': stored.get('ASR_PROVIDER', 'mock'),
         'translation_provider': stored.get('TRANSLATION_PROVIDER', 'mock'),
         'tts_provider': stored.get('TTS_PROVIDER', 'mock'),
-        'qwen_asr_model': stored.get('QWEN_ASR_MODEL', os.getenv('QWEN_ASR_MODEL', 'qwen3-asr-flash-realtime')),
+        'qwen_asr_model': (
+            'qwen3.5-omni-plus-realtime'
+            if stored.get('QWEN_ASR_MODEL') == 'qwen3-asr-flash-realtime'
+            else stored.get('QWEN_ASR_MODEL', os.getenv('QWEN_ASR_MODEL', 'qwen3.5-omni-plus-realtime'))
+        ),
         'qwen_asr_language': stored.get('QWEN_ASR_LANGUAGE', os.getenv('QWEN_ASR_LANGUAGE', 'en')),
+        'target_language': stored.get('TARGET_LANGUAGE', os.getenv('TARGET_LANGUAGE', 'zh')),
         'dashscope_region': stored.get('DASHSCOPE_REGION', os.getenv('DASHSCOPE_REGION', 'cn')),
         'dashscope_api_key_configured': api_key_configured,
     }
@@ -46,12 +52,14 @@ async def update_settings(payload: SettingsPayload, db: Session = Depends(get_db
     config_store.set(db, 'TTS_PROVIDER', payload.tts_provider)
     config_store.set(db, 'QWEN_ASR_MODEL', payload.qwen_asr_model)
     config_store.set(db, 'QWEN_ASR_LANGUAGE', payload.qwen_asr_language)
+    config_store.set(db, 'TARGET_LANGUAGE', payload.target_language)
     config_store.set(db, 'DASHSCOPE_REGION', payload.dashscope_region)
     apply_runtime_setting('ASR_PROVIDER', payload.asr_provider)
     apply_runtime_setting('TRANSLATION_PROVIDER', payload.translation_provider)
     apply_runtime_setting('TTS_PROVIDER', payload.tts_provider)
     apply_runtime_setting('QWEN_ASR_MODEL', payload.qwen_asr_model)
     apply_runtime_setting('QWEN_ASR_LANGUAGE', payload.qwen_asr_language)
+    apply_runtime_setting('TARGET_LANGUAGE', payload.target_language)
     apply_runtime_setting('DASHSCOPE_REGION', payload.dashscope_region)
     return {
         'asr_provider': payload.asr_provider,
@@ -59,6 +67,7 @@ async def update_settings(payload: SettingsPayload, db: Session = Depends(get_db
         'tts_provider': payload.tts_provider,
         'qwen_asr_model': payload.qwen_asr_model,
         'qwen_asr_language': payload.qwen_asr_language,
+        'target_language': payload.target_language,
         'dashscope_region': payload.dashscope_region,
     }
 

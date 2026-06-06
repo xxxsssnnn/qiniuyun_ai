@@ -24,7 +24,8 @@ class OpenAITranslationProvider(TranslationProvider):
             return TranslationResult(source_text=text, translated_text=f"[OpenAI unavailable] {text}", is_final=False)
 
         prompt = (
-            f"请把下面{source_language}内容翻译成{target_language}，保持术语统一，适合字幕阅读，输出自然、简洁、准确的中文。\n\n"
+            f"请把下面{source_language}内容翻译成{target_language}，保持术语统一，适合字幕阅读，"
+            f"只输出自然、简洁、准确的{target_language}译文。\n\n"
             f"原文：{text}"
         )
 

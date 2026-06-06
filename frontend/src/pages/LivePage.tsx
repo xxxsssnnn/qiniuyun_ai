@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
-import { fetchGlossary, type GlossaryEntry, fetchLatestChunk } from '../services/api'
+import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
@@ -35,6 +35,7 @@ export function LivePage() {
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [autoSpeak, setAutoSpeak] = useState(true)
   const autoSpeakRef = useRef(true)
+  const speechLanguageRef = useRef('zh-CN')
   const lastSpokenRef = useRef('')
   const correctionTotal = subtitles.reduce((total, item) => total + item.correctionCount, 0)
 
@@ -72,7 +73,7 @@ export function LivePage() {
                   updatedAt: Date.now(),
                 }
                 if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
-                  const spoke = speakText(translatedText)
+                  const spoke = speakText(translatedText, speechLanguageRef.current)
                   if (spoke) lastSpokenRef.current = translatedText
                 }
                 return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 10)
@@ -109,6 +110,25 @@ export function LivePage() {
 
   useEffect(() => {
     void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))
+    void fetchSettings().then((settings) => {
+      const language = settings.target_language ?? 'zh'
+      speechLanguageRef.current = {
+        zh: 'zh-CN',
+        yue: 'zh-HK',
+        en: 'en-US',
+        ja: 'ja-JP',
+        ko: 'ko-KR',
+        fr: 'fr-FR',
+        de: 'de-DE',
+        es: 'es-ES',
+        ru: 'ru-RU',
+        pt: 'pt-PT',
+        it: 'it-IT',
+        ar: 'ar-SA',
+        th: 'th-TH',
+        vi: 'vi-VN',
+      }[language] ?? language
+    }).catch(() => undefined)
   }, [])
 
   const handleStartDemo = () => {

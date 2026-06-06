@@ -13,12 +13,32 @@ import websockets
 from app.services.asr import ASRProvider, ASRResult
 
 
+LANGUAGE_NAMES = {
+    "zh": "中文",
+    "en": "英语",
+    "yue": "粤语",
+    "ja": "日语",
+    "ko": "韩语",
+    "fr": "法语",
+    "de": "德语",
+    "es": "西班牙语",
+    "ru": "俄语",
+    "pt": "葡萄牙语",
+    "it": "意大利语",
+    "ar": "阿拉伯语",
+    "th": "泰语",
+    "vi": "越南语",
+}
+
+
 @dataclass
 class QwenRealtimeSession:
     websocket: Any
     language: str
     results: asyncio.Queue[ASRResult] = field(default_factory=asyncio.Queue)
     reader_task: asyncio.Task[None] | None = None
+    source_text: str = ""
+    translated_text: str = ""
 
 
 class QwenASRProvider(ASRProvider):
@@ -29,16 +49,25 @@ class QwenASRProvider(ASRProvider):
             or os.getenv("ALIYUN_API_KEY")
             or ""
         )
-        self.model = os.getenv("QWEN_ASR_MODEL", "qwen3-asr-flash-realtime")
+        configured_model = os.getenv("QWEN_ASR_MODEL", "qwen3.5-omni-plus-realtime")
+        self.model = (
+            "qwen3.5-omni-plus-realtime"
+            if configured_model == "qwen3-asr-flash-realtime"
+            else configured_model
+        )
         self.language = os.getenv("QWEN_ASR_LANGUAGE", "en")
+        self.target_language = os.getenv("TARGET_LANGUAGE", "zh")
         self.region = os.getenv("DASHSCOPE_REGION", "cn").lower()
+        self.workspace_id = os.getenv("DASHSCOPE_WORKSPACE_ID", "")
         self._sessions: dict[str, QwenRealtimeSession] = {}
         self._session_lock = asyncio.Lock()
 
     @property
     def base_url(self) -> str:
         if self.region in {"intl", "international", "sg", "singapore"}:
-            return "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime"
+            if not self.workspace_id:
+                raise RuntimeError("DASHSCOPE_WORKSPACE_ID is required for the international region")
+            return f"wss://{self.workspace_id}.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime"
         return "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
 
     async def _read_events(self, session: QwenRealtimeSession) -> None:
@@ -46,28 +75,42 @@ class QwenASRProvider(ASRProvider):
             async for raw_message in session.websocket:
                 event = json.loads(raw_message)
                 event_type = event.get("type", "")
-                if event_type == "conversation.item.input_audio_transcription.completed":
+                if event_type == "conversation.item.input_audio_transcription.delta":
+                    session.source_text = (
+                        str(event.get("text", ""))
+                        + str(event.get("stash", ""))
+                    ).strip()
+                elif event_type == "conversation.item.input_audio_transcription.completed":
                     text = str(event.get("transcript", "")).strip()
                     if text:
+                        session.source_text = text
+                elif event_type in {"response.text.delta", "response.audio_transcript.delta"}:
+                    delta = str(event.get("delta", ""))
+                    if delta:
+                        session.translated_text += delta
                         await session.results.put(
                             ASRResult(
-                                text=text,
+                                text=session.source_text,
+                                translated_text=session.translated_text,
+                                is_final=False,
+                                confidence=1.0,
+                                language=session.language,
+                            )
+                        )
+                elif event_type in {"response.text.done", "response.audio_transcript.done"}:
+                    translated = str(event.get("text") or event.get("transcript") or session.translated_text).strip()
+                    if translated:
+                        await session.results.put(
+                            ASRResult(
+                                text=session.source_text,
+                                translated_text=translated,
                                 is_final=True,
                                 confidence=1.0,
                                 language=session.language,
                             )
                         )
-                elif event_type == "conversation.item.input_audio_transcription.text":
-                    text = str(event.get("stash") or event.get("transcript") or "").strip()
-                    if text:
-                        await session.results.put(
-                            ASRResult(
-                                text=text,
-                                is_final=False,
-                                confidence=0.9,
-                                language=session.language,
-                            )
-                        )
+                    session.source_text = ""
+                    session.translated_text = ""
                 elif event_type == "error":
                     error = event.get("error", {})
                     message = error.get("message", "Qwen realtime ASR error")
@@ -103,6 +146,10 @@ class QwenASRProvider(ASRProvider):
         )
         session = QwenRealtimeSession(websocket=websocket, language=self.language)
         session.reader_task = asyncio.create_task(self._read_events(session))
+        target_language_name = LANGUAGE_NAMES.get(
+            self.target_language,
+            self.target_language,
+        )
         await websocket.send(
             json.dumps(
                 {
@@ -111,12 +158,23 @@ class QwenASRProvider(ASRProvider):
                     "session": {
                         "modalities": ["text"],
                         "input_audio_format": "pcm",
-                        "sample_rate": 16000,
-                        "input_audio_transcription": {"language": self.language},
+                        "input_audio_transcription": {
+                            "model": "qwen3-asr-flash-realtime",
+                            "language": self.language,
+                        },
+                        "instructions": (
+                            f"你是实时同声传译引擎。识别用户语音后，将其忠实、完整、简洁地翻译成{target_language_name}。"
+                            f"只输出{target_language_name}译文，不回答问题，不解释，不添加标题、引号或额外内容。"
+                            "保留人名、产品名、数字和专业术语的准确含义。"
+                        ),
+                        "temperature": 0.2,
                         "turn_detection": {
                             "type": "server_vad",
-                            "threshold": 0.0,
-                            "silence_duration_ms": 400,
+                            "threshold": 0.3,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 500,
+                            "create_response": True,
+                            "interrupt_response": True,
                         },
                     },
                 }
@@ -166,7 +224,7 @@ class QwenASRProvider(ASRProvider):
             try:
                 return await asyncio.wait_for(session.results.get(), timeout=0.08)
             except asyncio.TimeoutError:
-                return ASRResult(text="", language=self.language)
+                return ASRResult(text="", translated_text="", language=self.language)
         except Exception as exc:
             return ASRResult(
                 text=f"[Qwen ASR unavailable] {exc}",

@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 @dataclass
 class ASRResult:
     text: str
+    translated_text: str | None = None
     is_final: bool = False
     confidence: float = 0.0
     language: str = "en"

@@ -28,6 +28,7 @@ export type AppSettings = {
   tts_provider: string
   qwen_asr_model: string
   qwen_asr_language: string
+  target_language: string
   dashscope_region: string
   dashscope_api_key_configured?: boolean
 }
@@ -71,6 +72,7 @@ export async function deleteGlossaryEntry(source: string) {
 
 export async function fetchSettings() {
   const response = await fetch(`${API_BASE}/settings`)
+  if (!response.ok) throw new Error(`Failed to fetch settings: ${response.status}`)
   return response.json() as Promise<Partial<AppSettings>>
 }
 
@@ -80,6 +82,7 @@ export async function updateSettings(payload: AppSettings) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  if (!response.ok) throw new Error(`Failed to update settings: ${response.status}`)
   return response.json() as Promise<AppSettings>
 }
 

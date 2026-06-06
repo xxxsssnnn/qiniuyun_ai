@@ -1,4 +1,5 @@
 import itertools
+import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -34,6 +35,7 @@ class TranscriptionProcessor:
         self.asr_provider = asr_provider
         self.translation_provider = translation_provider
         self.tts_provider = tts_provider
+        self.target_language = os.getenv("TARGET_LANGUAGE", "zh")
         self._counter = itertools.count(1)
         self._active_chunk_ids: Dict[str, str] = {}
         self._revisions: Dict[str, int] = {}
@@ -41,9 +43,10 @@ class TranscriptionProcessor:
     async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
         index = next(self._counter)
         asr_result = await self.asr_provider.transcribe(chunk, session_id)
-        if not asr_result.text.strip():
+        if not asr_result.text.strip() and not (asr_result.translated_text or "").strip():
             return
-        glossary_manager.remember_context(session_id, asr_result.text)
+        if asr_result.text.strip():
+            glossary_manager.remember_context(session_id, asr_result.text)
         is_final = asr_result.is_final
         chunk_id = self._active_chunk_ids.get(session_id)
         if not chunk_id:
@@ -55,18 +58,22 @@ class TranscriptionProcessor:
             current_revision += 1
         self._revisions[chunk_id] = current_revision
 
-        translation_result = await self.translation_provider.translate(
-            asr_result.text,
-            source_language=asr_result.language,
-            target_language="zh",
-            session_id=session_id,
-        )
+        if asr_result.translated_text is not None:
+            translated_text = asr_result.translated_text
+        else:
+            translation_result = await self.translation_provider.translate(
+                asr_result.text,
+                source_language=asr_result.language,
+                target_language=self.target_language,
+                session_id=session_id,
+            )
+            translated_text = translation_result.translated_text
         if self.tts_provider and is_final:
-            await self.tts_provider.speak(translation_result.translated_text)
+            await self.tts_provider.speak(translated_text, language=self.target_language)
         event = TranscriptEvent(
             chunk_id=chunk_id,
             source_text=asr_result.text,
-            translated_text=translation_result.translated_text,
+            translated_text=translated_text,
             is_final=is_final,
             revision=current_revision,
         )
