@@ -41,3 +41,10 @@ frontend/.vite/
 
 # Vite cache
 frontend/node_modules/.vite/
+
+# Local project files
+backend/app.db
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+frontend/tsconfig.tsbuildinfo
