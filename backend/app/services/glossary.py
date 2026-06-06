@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.glossary import GlossaryItem
@@ -24,6 +24,14 @@ class GlossaryManager:
         self._entries[entry.source] = entry
         return entry
 
+    def update_entry(self, source: str, target: str, note: str = "") -> GlossaryEntry | None:
+        key = source.lower()
+        if key not in self._entries:
+            return None
+        entry = GlossaryEntry(source=key, target=target, note=note)
+        self._entries[key] = entry
+        return entry
+
     def add_entry_db(self, session: Session, source: str, target: str, note: str = "") -> GlossaryEntry:
         item = session.scalar(select(GlossaryItem).where(GlossaryItem.source == source.lower()))
         if item:
@@ -37,6 +45,27 @@ class GlossaryManager:
         entry = GlossaryEntry(source=item.source, target=item.target, note=item.note or "")
         self._entries[entry.source] = entry
         return entry
+
+    def update_entry_db(self, session: Session, source: str, target: str, note: str = "") -> GlossaryEntry | None:
+        item = session.scalar(select(GlossaryItem).where(GlossaryItem.source == source.lower()))
+        if not item:
+            return None
+        item.target = target
+        item.note = note
+        session.commit()
+        session.refresh(item)
+        entry = GlossaryEntry(source=item.source, target=item.target, note=item.note or "")
+        self._entries[entry.source] = entry
+        return entry
+
+    def delete_entry_db(self, session: Session, source: str) -> bool:
+        item = session.scalar(select(GlossaryItem).where(GlossaryItem.source == source.lower()))
+        if not item:
+            return False
+        session.delete(item)
+        session.commit()
+        self._entries.pop(source.lower(), None)
+        return True
 
     def load_entries_from_db(self, connection) -> None:
         session = Session(bind=connection)
