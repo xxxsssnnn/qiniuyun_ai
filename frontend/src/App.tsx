@@ -7,11 +7,11 @@ import { LivePage } from './pages/LivePage'
 import { SettingsPage } from './pages/SettingsPage'
 
 const tabs = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'live', label: 'Live' },
-  { id: 'glossary', label: 'Glossary' },
-  { id: 'corrections', label: 'Corrections' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'dashboard', label: 'Dashboard', shortLabel: 'DB' },
+  { id: 'live', label: 'Live', shortLabel: 'LIVE' },
+  { id: 'glossary', label: 'Glossary', shortLabel: 'GL' },
+  { id: 'corrections', label: 'Corrections', shortLabel: 'CR' },
+  { id: 'settings', label: 'Settings', shortLabel: 'ST' },
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -22,27 +22,59 @@ export function App() {
 
   return (
     <div className="app-frame">
-      <header className="app-header">
-        <div>
-          <span className="app-kicker">AI 同声传译助手</span>
-          <h1>{activeLabel}</h1>
+      <aside className="app-sidebar">
+        <div className="app-brand">
+          <span className="brand-mark" aria-hidden="true">AI</span>
+          <div className="brand-copy">
+            <strong>Interpreter</strong>
+            <span>Realtime workspace</span>
+          </div>
         </div>
-        <nav className="app-nav">
+
+        <nav className="app-nav" aria-label="Main navigation">
           {tabs.map((tab) => (
-            <button key={tab.id} className={tab.id === activeTab ? 'nav-tab active' : 'nav-tab'} onClick={() => setActiveTab(tab.id)}>
-              {tab.label}
+            <button
+              key={tab.id}
+              className={tab.id === activeTab ? 'nav-tab active' : 'nav-tab'}
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={tab.id === activeTab ? 'page' : undefined}
+            >
+              <span className="nav-icon" aria-hidden="true">{tab.shortLabel}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </nav>
-      </header>
 
-      <main className="app-main">
-        {activeTab === 'dashboard' && <DashboardPage />}
-        {activeTab === 'live' && <LivePage />}
-        {activeTab === 'glossary' && <GlossaryPage />}
-        {activeTab === 'corrections' && <CorrectionsPage />}
-        {activeTab === 'settings' && <SettingsPage />}
-      </main>
+        <div className="sidebar-footer">
+          <span className="connection-dot" aria-hidden="true" />
+          <div>
+            <strong>Local workspace</strong>
+            <span>AI simultaneous interpretation</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className="app-workspace">
+        <header className="app-header">
+          <div className="page-heading">
+            <span className="app-kicker">AI INTERPRETATION</span>
+            <h1>{activeLabel}</h1>
+            <p>Realtime interpretation console</p>
+          </div>
+          <div className="header-status">
+            <span className="status-pulse" aria-hidden="true" />
+            <span>Workspace ready</span>
+          </div>
+        </header>
+
+        <main className="app-main">
+          {activeTab === 'dashboard' && <DashboardPage />}
+          {activeTab === 'live' && <LivePage />}
+          {activeTab === 'glossary' && <GlossaryPage />}
+          {activeTab === 'corrections' && <CorrectionsPage />}
+          {activeTab === 'settings' && <SettingsPage />}
+        </main>
+      </div>
     </div>
   )
 }
