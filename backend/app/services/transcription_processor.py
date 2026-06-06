@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from app.services.asr import ASRProvider
 from app.services.connection_manager import ConnectionManager
+from app.services.revision_manager import revision_manager
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.translation import TranslationProvider
 from app.services.tts import TTSProvider
@@ -35,7 +36,7 @@ class TranscriptionProcessor:
 
     async def handle_audio_chunk(self, session_id: str, chunk: bytes) -> None:
         index = next(self._counter)
-        asr_result = await self.asr_provider.transcribe(chunk)
+        asr_result = await self.asr_provider.transcribe(chunk, session_id)
         translation_result = await self.translation_provider.translate(asr_result.text)
         if self.tts_provider and translation_result.is_final:
             await self.tts_provider.speak(translation_result.translated_text)
@@ -47,14 +48,14 @@ class TranscriptionProcessor:
             is_final=is_final,
             revision=asr_result.revision,
         )
-        self.buffer.append(
-            TranscriptChunk(
-                chunk_id=event.chunk_id,
-                source_text=event.source_text,
-                translated_text=event.translated_text,
-                is_final=event.is_final,
-            )
+        chunk_record = TranscriptChunk(
+            chunk_id=event.chunk_id,
+            source_text=event.source_text,
+            translated_text=event.translated_text,
+            is_final=event.is_final,
         )
+        self.buffer.append(chunk_record)
+        revision_manager.record(chunk_record, event.revision)
         await self.manager.broadcast(
             session_id,
             {

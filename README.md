@@ -20,6 +20,7 @@
 - TTS 抽象层
 - 实时字幕展示
 - 演示模式
+- 字幕修正与版本记录
 
 当前仍使用模拟 ASR / 翻译 / TTS 作为占位实现，后续可以无缝替换为真实模型或云服务。
 
@@ -91,14 +92,36 @@ npm run dev
 ASR_PROVIDER=whisper
 ```
 
-可替换目标包括：
+如果启用 Whisper provider，系统会尝试加载 `whisper` 包并执行本地转写。
+如果 Whisper 不可用或模型加载失败，会自动回退到 mock ASR，保证项目可运行。
 
-- Whisper
-- faster-whisper
-- FunASR
-- 云语音识别服务
+### Whisper 本地运行说明
 
-如果未安装 Whisper 或模型不可用，系统会自动回退到 mock ASR，保证项目可运行。
+- 安装 Python 依赖：`whisper`
+- 准备本地音频解码环境
+- 默认模型名：`base`
+- 目前实现先将前端传来的音频 chunk 写入临时文件，再调用 Whisper 推理
+
+> 提示：前端当前发送的是 `webm/opus` 分片，后续如果需要更高稳定性，可以在后端增加 `ffmpeg` 转码成 Whisper 更适合处理的格式。
+
+## 翻译配置
+
+当前默认使用 mock 翻译。可以通过环境变量切换：
+
+```bash
+TRANSLATION_PROVIDER=openai
+```
+
+如果启用 OpenAI translation provider，系统会尝试调用 OpenAI 兼容的翻译接口。
+如果翻译服务不可用，会自动回退到 mock 翻译，保证项目可运行。
+
+## 字幕修正
+
+系统已加入字幕版本记录与回滚管理：
+
+- 每个字幕片段会记录修订版本
+- 后续识别或翻译修正时可以保留历史版本
+- 后续可以在此基础上继续做自动回滚与局部替换
 
 ## 后续计划
 
