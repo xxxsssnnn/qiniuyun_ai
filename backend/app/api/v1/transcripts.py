@@ -8,6 +8,7 @@ from app.services.audio_session import audio_sessions
 from app.services.asr_factory import get_asr_provider
 from app.services.connection_manager import ConnectionManager
 from app.services.mock_stream import start_mock_stream
+from app.services.revision_manager import revision_manager
 from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.transcription_processor import TranscriptionProcessor
 from app.services.translation_factory import get_translation_provider
@@ -71,6 +72,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 elif message_type == "stop_audio":
                     session.stop()
                     await manager.broadcast(session_id, {"type": "audio", "session_id": session_id, "payload": {"message": "audio recording stopped"}})
+                elif message_type == "rollback":
+                    chunk_id = message.get("chunk_id")
+                    revision = int(message.get("revision", 0))
+                    if chunk_id:
+                        correction = revision_manager.rollback(chunk_id, revision)
+                        if correction:
+                            await manager.broadcast(session_id, revision_manager.correction_payload(correction))
                 else:
                     await manager.broadcast(session_id, message)
             elif data.get("bytes"):

@@ -71,3 +71,21 @@ class TranscriptionProcessor:
                 },
             },
         )
+        if is_final:
+            correction_event = revision_manager.rollback(event.chunk_id, event.revision)
+            if correction_event:
+                await self.manager.broadcast(
+                    session_id,
+                    {
+                        "type": "correction",
+                        "session_id": session_id,
+                        "payload": {
+                            "chunk_id": correction_event.chunk_id,
+                            "previousRevision": correction_event.previous_revision,
+                            "currentRevision": correction_event.current_revision,
+                            "sourceText": correction_event.source_text,
+                            "translatedText": correction_event.translated_text,
+                            "isFinal": correction_event.is_final,
+                        },
+                    },
+                )
