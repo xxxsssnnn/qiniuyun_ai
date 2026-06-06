@@ -25,3 +25,10 @@ class StreamTextChunk(BaseModel):
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
     revision: int = 0
+
+
+class AudioChunkMessage(BaseModel):
+    type: str = "audio"
+    session_id: str
+    mime_type: str = "audio/webm;codecs=opus"
+    data_base64: str
