@@ -58,3 +58,8 @@ export async function deleteGlossaryEntry(source: string) {
   })
   return response.json() as Promise<{ ok: boolean }>
 }
+
+export async function fetchLatestChunk() {
+  const response = await fetch(`${API_BASE}/transcripts/latest`)
+  return response.json() as Promise<StreamTextChunk | null>
+}

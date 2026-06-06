@@ -26,6 +26,14 @@
 
 当前仍使用模拟 ASR / 翻译 / TTS 作为占位实现，后续可以无缝替换为真实模型或云服务。
 
+## 前端页面拆分
+
+- `Dashboard`：项目总览
+- `Live`：实时传译主页面
+- `Glossary`：术语库管理
+- `Corrections`：字幕修正与历史
+- `Settings`：ASR / 翻译 / TTS 配置
+
 ## 目录结构
 
 ```text
@@ -146,33 +154,23 @@ DATABASE_URL=sqlite:///./app.db
 
 术语库表会在启动初始化阶段创建，并用于持久化 glossary entries。
 
-## 项目启动检查清单
+## 启动检查清单
 
 ### 后端
 
-- 安装依赖
-- 设置可选环境变量 `ASR_PROVIDER`、`TRANSLATION_PROVIDER`、`DATABASE_URL`
-- 启动 `uvicorn app.main:app --reload`
-- 访问健康检查接口 `http://localhost:8000/health`
-- 连接 WebSocket `ws://localhost:8000/api/v1/transcripts/ws/demo-session`
-- 确认术语库接口 `GET /api/v1/glossary` 可正常返回
+- 确认 Python 依赖已安装
+- 确认 `backend/app/main.py` 可正常启动
+- 确认 `/health` 可访问
+- 确认 WebSocket 地址 `ws://localhost:8000/api/v1/transcripts/ws/demo-session` 可握手
+- 确认数据库文件/表可创建
 
 ### 前端
 
-- 安装依赖
-- 启动 `npm run dev`
-- 打开 `http://localhost:5173`
+- 确认 `npm install` 已完成
+- 确认 `npm run dev` 能启动
 - 确认页面能连接 WebSocket
-- 确认“开始演示字幕”可正常推送字幕
-- 确认术语库可新增、编辑、删除
-
-### 功能验证
-
-- 演示模式可展示字幕流
-- 麦克风采集按钮可启动/停止录音
-- 音频块可发送到后端
-- 后端可返回字幕 chunk / revision / correction 事件
-- 术语库可持久化到数据库
+- 确认术语库接口可读写
+- 确认麦克风权限可正常申请
 
 ## 后续计划
 
