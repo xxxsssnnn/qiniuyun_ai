@@ -105,11 +105,11 @@ async def websocket_transcripts(websocket: WebSocket, session_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        manager.disconnect(session_id, websocket)
         if pipeline is not None:
             await pipeline.close()
         else:
             await processor.close_session(session_id)
-        manager.disconnect(session_id, websocket)
 
 
 @app.get("/health")

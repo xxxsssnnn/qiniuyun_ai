@@ -228,7 +228,6 @@ export function SettingsPage() {
         <h3>环境变量</h3>
         <ul className="feature-list">
           <li><code>DASHSCOPE_API_KEY</code>：推荐名称；也兼容 <code>QWEN_API_KEY</code> 和 <code>ALIYUN_API_KEY</code>。</li>
-          <li>国际（新加坡）地域还需要配置 <code>DASHSCOPE_WORKSPACE_ID</code>。</li>
           <li>切换地域时，请使用对应地域创建的 API Key。</li>
           <li>修改 provider 后请重新开始一次麦克风会话，已有会话不会中途更换模型。</li>
         </ul>
