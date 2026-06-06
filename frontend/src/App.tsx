@@ -68,8 +68,10 @@ export function App() {
         </header>
 
         <main className="app-main">
+          <div hidden={activeTab !== 'live'}>
+            <LivePage />
+          </div>
           {activeTab === 'dashboard' && <DashboardPage />}
-          {activeTab === 'live' && <LivePage />}
           {activeTab === 'glossary' && <GlossaryPage />}
           {activeTab === 'corrections' && <CorrectionsPage />}
           {activeTab === 'settings' && <SettingsPage />}

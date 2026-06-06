@@ -29,10 +29,36 @@ class RealtimePipeline:
         if self._tasks:
             return
         self._tasks = [
-            asyncio.create_task(self._audio_sender(), name=f"audio-{self.session_id}"),
-            asyncio.create_task(self._model_consumer(), name=f"model-{self.session_id}"),
-            asyncio.create_task(self._subtitle_broadcaster(), name=f"broadcast-{self.session_id}"),
+            self._create_task(self._audio_sender(), f"audio-{self.session_id}"),
+            self._create_task(self._model_consumer(), f"model-{self.session_id}"),
+            self._create_task(
+                self._subtitle_broadcaster(),
+                f"broadcast-{self.session_id}",
+            ),
         ]
+
+    def _create_task(self, coroutine, name: str) -> asyncio.Task[None]:
+        return asyncio.create_task(
+            self._run_guarded(coroutine, name),
+            name=name,
+        )
+
+    async def _run_guarded(self, coroutine, task_name: str) -> None:
+        try:
+            await coroutine
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await self.processor.manager.broadcast(
+                self.session_id,
+                {
+                    "type": "error",
+                    "session_id": self.session_id,
+                    "payload": {
+                        "message": f"{task_name} failed: {exc}",
+                    },
+                },
+            )
 
     async def enqueue_audio(self, chunk: bytes) -> None:
         if not self._closed:
@@ -43,31 +69,62 @@ class RealtimePipeline:
             chunk = await self.audio_queue.get()
             try:
                 self._last_audio_size = len(chunk)
-                await self.processor.asr_provider.send_audio(
-                    chunk,
-                    self.session_id,
-                )
+                try:
+                    await self.processor.asr_provider.send_audio(
+                        chunk,
+                        self.session_id,
+                    )
+                except Exception as exc:
+                    await self._broadcast_task_error("audio sender", exc)
             finally:
                 self.audio_queue.task_done()
 
     async def _model_consumer(self) -> None:
         while True:
-            result = await self.processor.asr_provider.receive_result(
-                self.session_id
-            )
-            await self.result_queue.put((result, self._last_audio_size))
+            try:
+                result = await self.processor.asr_provider.receive_result(
+                    self.session_id
+                )
+                await self.result_queue.put((result, self._last_audio_size))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await self._broadcast_task_error("model consumer", exc)
+                await asyncio.sleep(0.2)
 
     async def _subtitle_broadcaster(self) -> None:
         while True:
             result, byte_length = await self.result_queue.get()
             try:
-                await self.processor.handle_asr_result(
-                    self.session_id,
-                    result,
-                    byte_length,
-                )
+                try:
+                    await self.processor.handle_asr_result(
+                        self.session_id,
+                        result,
+                        byte_length,
+                    )
+                except Exception as exc:
+                    await self._broadcast_task_error(
+                        "subtitle broadcaster",
+                        exc,
+                    )
             finally:
                 self.result_queue.task_done()
+
+    async def _broadcast_task_error(
+        self,
+        task_name: str,
+        exc: Exception,
+    ) -> None:
+        await self.processor.manager.broadcast(
+            self.session_id,
+            {
+                "type": "error",
+                "session_id": self.session_id,
+                "payload": {
+                    "message": f"{task_name} failed: {exc}",
+                },
+            },
+        )
 
     async def finish_audio(self) -> None:
         await self.audio_queue.join()

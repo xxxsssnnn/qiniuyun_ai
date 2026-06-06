@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from app.services.asr import ASRProvider, ASRResult
 
@@ -43,6 +44,7 @@ class QwenRealtimeSession:
     translated_text: str = ""
     pending_partial: ASRResult | None = None
     finished: bool = False
+    closed: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class QwenASRProvider(ASRProvider):
@@ -62,16 +64,13 @@ class QwenASRProvider(ASRProvider):
         self.language = os.getenv("QWEN_ASR_LANGUAGE", "en")
         self.target_language = os.getenv("TARGET_LANGUAGE", "zh")
         self.region = os.getenv("DASHSCOPE_REGION", "cn").lower()
-        self.workspace_id = os.getenv("DASHSCOPE_WORKSPACE_ID", "")
         self._sessions: dict[str, QwenRealtimeSession] = {}
         self._session_lock = asyncio.Lock()
 
     @property
     def base_url(self) -> str:
         if self.region in {"intl", "international", "sg", "singapore"}:
-            if not self.workspace_id:
-                raise RuntimeError("DASHSCOPE_WORKSPACE_ID is required for the international region")
-            return f"wss://{self.workspace_id}.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime"
+            return "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime"
         return "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
 
     async def _read_events(self, session: QwenRealtimeSession) -> None:
@@ -129,6 +128,18 @@ class QwenASRProvider(ASRProvider):
                     )
         except asyncio.CancelledError:
             raise
+        except ConnectionClosed as exc:
+            if not session.finished:
+                await session.results.put(
+                    ASRResult(
+                        text=(
+                            "[Qwen connection closed] "
+                            f"code={exc.code}, reason={exc.reason or 'unknown'}"
+                        ),
+                        is_final=True,
+                        language=session.language,
+                    )
+                )
         except Exception as exc:
             await session.results.put(
                 ASRResult(
@@ -137,6 +148,8 @@ class QwenASRProvider(ASRProvider):
                     language=session.language,
                 )
             )
+        finally:
+            session.closed.set()
 
     async def _create_session(self) -> QwenRealtimeSession:
         if not self.api_key:
@@ -190,16 +203,40 @@ class QwenASRProvider(ASRProvider):
 
     async def _get_session(self, session_id: str) -> QwenRealtimeSession:
         current = self._sessions.get(session_id)
-        if current and current.reader_task and not current.reader_task.done():
+        if (
+            current
+            and not current.finished
+            and current.reader_task
+            and not current.reader_task.done()
+        ):
             return current
 
         async with self._session_lock:
             current = self._sessions.get(session_id)
-            if current and current.reader_task and not current.reader_task.done():
+            if (
+                current
+                and not current.finished
+                and current.reader_task
+                and not current.reader_task.done()
+            ):
                 return current
+            if current:
+                await self._dispose_session(current)
             current = await self._create_session()
             self._sessions[session_id] = current
             return current
+
+    async def _dispose_session(self, session: QwenRealtimeSession) -> None:
+        if session.reader_task and not session.reader_task.done():
+            session.reader_task.cancel()
+            try:
+                await session.reader_task
+            except asyncio.CancelledError:
+                pass
+        try:
+            await session.websocket.close()
+        except Exception:
+            pass
 
     async def test_connection(self) -> None:
         session = await self._create_session()
@@ -224,37 +261,63 @@ class QwenASRProvider(ASRProvider):
             return ASRResult(text="", translated_text="", language=self.language)
 
     async def send_audio(self, audio_chunk: bytes, session_id: str) -> None:
-        try:
-            session = await self._get_session(session_id)
-            await session.websocket.send(
-                json.dumps(
-                    {
-                        "event_id": f"event_{uuid.uuid4().hex}",
-                        "type": "input_audio_buffer.append",
-                        "audio": base64.b64encode(audio_chunk).decode("ascii"),
-                    }
-                )
-            )
-        except Exception as exc:
-            session = self._sessions.get(session_id)
-            if session:
-                await session.results.put(
-                    ASRResult(
-                        text=f"[Qwen ASR unavailable] {exc}",
-                        is_final=True,
-                        language=self.language,
-                    )
-                )
-            else:
-                raise
+        payload = json.dumps(
+            {
+                "event_id": f"event_{uuid.uuid4().hex}",
+                "type": "input_audio_buffer.append",
+                "audio": base64.b64encode(audio_chunk).decode("ascii"),
+            }
+        )
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                session = await self._get_session(session_id)
+                await session.websocket.send(payload)
+                return
+            except (ConnectionClosed, OSError) as exc:
+                last_error = exc
+                current = self._sessions.pop(session_id, None)
+                if current:
+                    await self._dispose_session(current)
+                if attempt == 0:
+                    await asyncio.sleep(0.2)
+                    continue
+            except Exception as exc:
+                last_error = exc
+                break
+
+        raise ConnectionError(
+            f"Qwen audio connection failed after reconnect: {last_error}"
+        )
 
     async def receive_result(self, session_id: str) -> ASRResult:
-        session = await self._get_session(session_id)
-        result = await session.results.get()
-        if not result.is_final and session.pending_partial is not None:
-            result = session.pending_partial
-            session.pending_partial = None
-        return result
+        while True:
+            session = self._sessions.get(session_id)
+            if session is None:
+                await asyncio.sleep(0.05)
+                continue
+
+            result_task = asyncio.create_task(session.results.get())
+            closed_task = asyncio.create_task(session.closed.wait())
+            done, pending = await asyncio.wait(
+                {result_task, closed_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+
+            if result_task in done:
+                result = result_task.result()
+                if not result.is_final and session.pending_partial is not None:
+                    result = session.pending_partial
+                    session.pending_partial = None
+                return result
+
+            if not session.results.empty():
+                return session.results.get_nowait()
+
+            if self._sessions.get(session_id) is session:
+                await asyncio.sleep(0.05)
 
     async def finish_session(self, session_id: str) -> None:
         session = self._sessions.get(session_id)
@@ -279,6 +342,4 @@ class QwenASRProvider(ASRProvider):
             return
         await self.finish_session(session_id)
         self._sessions.pop(session_id, None)
-        await session.websocket.close()
-        if session.reader_task:
-            session.reader_task.cancel()
+        await self._dispose_session(session)
