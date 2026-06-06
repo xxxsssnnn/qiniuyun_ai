@@ -8,9 +8,12 @@ export type StreamSessionState = {
 export type StreamTextChunk = {
   chunk_id: string
   session_id: string
-  source_text: string
-  translated_text: string
-  is_final: boolean
+  source_text?: string
+  translated_text?: string
+  is_final?: boolean
+  sourceText?: string
+  translatedText?: string
+  isFinal?: boolean
   start_ms?: number | null
   end_ms?: number | null
   revision: number

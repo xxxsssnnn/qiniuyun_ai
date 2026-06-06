@@ -34,6 +34,8 @@
 - `Corrections`：字幕修正与历史
 - `Settings`：ASR / 翻译 / TTS 配置
 
+当前前端已采用导航式拆分，后续可继续把每个页面拆成独立路由组件。
+
 ## 目录结构
 
 ```text
@@ -105,17 +107,31 @@ npm run dev
 ASR_PROVIDER=whisper
 ```
 
-如果启用 Whisper provider，系统会尝试加载 `whisper` 包并执行本地转写。
-如果 Whisper 不可用或模型加载失败，会自动回退到 mock ASR，保证项目可运行。
+如果启用 Whisper provider，系统会优先尝试：
+
+1. `openai-whisper`
+2. `faster-whisper`
+
+默认模型名：
+
+```bash
+WHISPER_MODEL=base
+```
+
+可选运行环境：
+
+```bash
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+```
+
+如果 Whisper 或模型加载失败，会自动回退到 mock ASR，保证项目可运行。
 
 ### Whisper 本地运行说明
 
-- 安装 Python 依赖：`whisper`
+- 安装 Python 依赖：`whisper` 或 `faster-whisper`
 - 准备本地音频解码环境
-- 默认模型名：`base`
-- 目前实现先将前端传来的音频 chunk 写入临时文件，再调用 Whisper 推理
-
-> 提示：前端当前发送的是 `webm/opus` 分片，后续如果需要更高稳定性，可以在后端增加 `ffmpeg` 转码成 Whisper 更适合处理的格式。
+- 前端当前发送的是 `webm/opus` 分片，后续如果需要更高稳定性，可以在后端增加 `ffmpeg` 转码
 
 ## 翻译配置
 
@@ -174,8 +190,7 @@ DATABASE_URL=sqlite:///./app.db
 
 ## 后续计划
 
-1. 接入真实 ASR 模型
-2. 接入真实翻译服务
-3. 接入真实 TTS 服务
-4. 增加字幕自动修正机制
-5. 增加术语库与上下文记忆的检索增强
+1. 接入真实翻译服务
+2. 接入真实 TTS 服务
+3. 增加字幕自动修正机制
+4. 增加术语库与上下文记忆的检索增强
