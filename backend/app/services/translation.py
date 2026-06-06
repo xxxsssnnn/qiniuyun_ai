@@ -1,14 +1,21 @@
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 
 @dataclass
-class TranslationRequest:
+class TranslationResult:
     source_text: str
-    source_language: str = "en"
-    target_language: str = "zh"
+    translated_text: str
+    is_final: bool = False
 
 
-class TranslationService:
-    def translate(self, request: TranslationRequest) -> str:
-        # 占位实现：后续替换成大模型/翻译服务调用
-        return request.source_text
+class TranslationProvider(ABC):
+    @abstractmethod
+    async def translate(self, text: str, source_language: str = "en", target_language: str = "zh") -> TranslationResult:
+        raise NotImplementedError
+
+
+class MockTranslationProvider(TranslationProvider):
+    async def translate(self, text: str, source_language: str = "en", target_language: str = "zh") -> TranslationResult:
+        translated = f"【{target_language}】{text}"
+        return TranslationResult(source_text=text, translated_text=translated, is_final=False)
