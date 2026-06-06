@@ -1,6 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Dict, List
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.glossary import GlossaryItem
+
 
 @dataclass
 class GlossaryEntry:
@@ -18,6 +23,29 @@ class GlossaryManager:
         entry = GlossaryEntry(source=source.lower(), target=target, note=note)
         self._entries[entry.source] = entry
         return entry
+
+    def add_entry_db(self, session: Session, source: str, target: str, note: str = "") -> GlossaryEntry:
+        item = session.scalar(select(GlossaryItem).where(GlossaryItem.source == source.lower()))
+        if item:
+            item.target = target
+            item.note = note
+        else:
+            item = GlossaryItem(source=source.lower(), target=target, note=note)
+            session.add(item)
+        session.commit()
+        session.refresh(item)
+        entry = GlossaryEntry(source=item.source, target=item.target, note=item.note or "")
+        self._entries[entry.source] = entry
+        return entry
+
+    def load_entries_from_db(self, connection) -> None:
+        session = Session(bind=connection)
+        try:
+            items = session.scalars(select(GlossaryItem)).all()
+            for item in items:
+                self._entries[item.source] = GlossaryEntry(source=item.source, target=item.target, note=item.note or "")
+        finally:
+            session.close()
 
     def remove_entry(self, source: str) -> None:
         self._entries.pop(source.lower(), None)
