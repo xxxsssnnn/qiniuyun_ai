@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { StatusCard } from '../components/StatusCard'
 import { addGlossaryEntry, deleteGlossaryEntry, fetchGlossary, updateGlossaryEntry, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
-import { createRealtimeSocket, type RealtimeMessage } from '../services/ws'
+import { closeRealtimeSocket, createRealtimeSocket, type RealtimeMessage } from '../services/ws'
 
 type SubtitleItem = {
   id: string
@@ -78,7 +78,7 @@ export function LivePage() {
       ])
     })
 
-    return () => realtimeSocket.close()
+    return () => closeRealtimeSocket(realtimeSocket)
   }, [sessionId])
 
   useEffect(() => {
