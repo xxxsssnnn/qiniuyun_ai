@@ -56,6 +56,7 @@ export function LivePage() {
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => Promise<void> } | null>(null)
   const audioSessionRef = useRef<{ stop: () => Promise<void> } | null>(null)
@@ -67,6 +68,14 @@ export function LivePage() {
   const canRecord = connectionStatus === 'connected' && audioState !== 'recording' && audioState !== 'starting'
   const visibleSubtitles = subtitles.filter((item) => item.isFinal && (item.sourceText.trim() || item.translatedText.trim()))
   const latestSubtitle = visibleSubtitles[0]
+  const selectedSource = selectedSourceId
+    ? sourceTranscript.find((item) => item.id === selectedSourceId)
+    : null
+  const selectedSubtitle = selectedSource
+    ? visibleSubtitles.find((item) => item.id === selectedSource.id)
+      ?? visibleSubtitles.find((item) => item.sourceText.trim() === selectedSource.text.trim())
+    : null
+  const displayedSubtitle = selectedSourceId ? selectedSubtitle : latestSubtitle
   const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
 
   useEffect(() => {
@@ -258,21 +267,33 @@ export function LivePage() {
         <article className="sci-panel sci-translation-panel">
           <div className="sci-panel-head">
             <span>TRANSLATION OUTPUT</span>
-            <small>{latestSubtitle ? 'FINAL' : 'STANDBY'}</small>
+            <div className="sci-panel-head-actions">
+              {selectedSourceId ? (
+                <button type="button" className="sci-latest-button" onClick={() => setSelectedSourceId(null)}>
+                  返回最新
+                </button>
+              ) : null}
+              <small>{selectedSourceId ? 'SELECTED' : displayedSubtitle ? 'LATEST' : 'STANDBY'}</small>
+            </div>
           </div>
           <div className="sci-translation-screen">
-            {latestSubtitle ? (
+            {displayedSubtitle ? (
               <>
-                <p>{latestSubtitle.sourceText || '正在等待原文...'}</p>
-                <h2>{latestSubtitle.translatedText || '译文生成中...'}</h2>
-                {latestSubtitle.translationError ? (
+                <p>{displayedSubtitle.sourceText || '正在等待原文...'}</p>
+                <h2>{displayedSubtitle.translatedText || '译文生成中...'}</h2>
+                {displayedSubtitle.translationError ? (
                   <small className="sci-correction-badge">请在设置中检查翻译模型与 API Key</small>
                 ) : null}
-                {latestSubtitle.autoCorrection ? (
+                {displayedSubtitle.autoCorrection ? (
                   <small className="sci-correction-badge">
-                    AI 已自动纠错{latestSubtitle.correctionReasons?.length ? `：${latestSubtitle.correctionReasons.join('、')}` : ''}
+                    AI 已自动纠错{displayedSubtitle.correctionReasons?.length ? `：${displayedSubtitle.correctionReasons.join('、')}` : ''}
                   </small>
                 ) : null}
+              </>
+            ) : selectedSource ? (
+              <>
+                <p>{selectedSource.text}</p>
+                <h2>译文生成中...</h2>
               </>
             ) : (
               <div className="sci-empty-screen">
@@ -302,10 +323,20 @@ export function LivePage() {
             {sourceTranscript.length === 0 ? (
               <div className="sci-source-empty">开始后，识别到的原文会实时出现在这里。</div>
             ) : sourceTranscript.map((item) => (
-              <div key={item.id} className={`sci-source-line ${item.isFinal ? 'final' : 'draft'}`}>
+              <button
+                type="button"
+                key={item.id}
+                className={`sci-source-line ${item.isFinal ? 'final' : 'draft'} ${selectedSourceId === item.id ? 'selected' : ''}`}
+                aria-pressed={selectedSourceId === item.id}
+                onClick={() => setSelectedSourceId(item.id)}
+              >
                 <p>{item.text}</p>
-                <small>{item.isFinal ? '已确认' : '识别中'} · {new Date(item.updatedAt).toLocaleTimeString()}</small>
-              </div>
+                <small>
+                  {selectedSourceId === item.id ? '正在查看' : item.isFinal ? '已确认' : '识别中'}
+                  {' · '}
+                  {new Date(item.updatedAt).toLocaleTimeString()}
+                </small>
+              </button>
             ))}
           </div>
         </article>
