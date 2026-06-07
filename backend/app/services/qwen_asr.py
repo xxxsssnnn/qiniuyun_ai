@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -67,6 +68,9 @@ class QwenRealtimeSession:
     )
     reader_task: asyncio.Task[None] | None = None
     source_text: str = ""
+    completed_source_texts: deque[str] = field(default_factory=deque)
+    active_response_source_text: str = ""
+    response_active: bool = False
     translated_text: str = ""
     pending_partial: ASRResult | None = None
     finished: bool = False
@@ -148,13 +152,33 @@ class QwenASRProvider(ASRProvider):
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     text = str(event.get("transcript", "")).strip()
                     if text:
-                        session.source_text = text
+                        if (
+                            session.response_active
+                            and not session.active_response_source_text
+                        ):
+                            session.active_response_source_text = text
+                        else:
+                            session.completed_source_texts.append(text)
+                    session.source_text = ""
+                elif event_type == "response.created":
+                    session.response_active = True
+                    session.translated_text = ""
+                    if (
+                        not session.active_response_source_text
+                        and session.completed_source_texts
+                    ):
+                        session.active_response_source_text = (
+                            session.completed_source_texts.popleft()
+                        )
                 elif event_type in {"response.text.delta", "response.audio_transcript.delta"}:
                     delta = str(event.get("delta", ""))
                     if delta:
                         session.translated_text += delta
                         partial = ASRResult(
-                            text=session.source_text,
+                            text=(
+                                session.active_response_source_text
+                                or session.source_text
+                            ),
                             translated_text=session.translated_text,
                             is_final=False,
                             confidence=1.0,
@@ -165,10 +189,13 @@ class QwenASRProvider(ASRProvider):
                             await session.results.put(partial)
                 elif event_type in {"response.text.done", "response.audio_transcript.done"}:
                     translated = str(event.get("text") or event.get("transcript") or session.translated_text).strip()
+                    source_text = session.active_response_source_text
+                    if not source_text and session.completed_source_texts:
+                        source_text = session.completed_source_texts.popleft()
                     if translated:
                         await session.results.put(
                             ASRResult(
-                                text=session.source_text,
+                                text=source_text,
                                 translated_text=translated,
                                 is_final=True,
                                 confidence=1.0,
@@ -176,7 +203,10 @@ class QwenASRProvider(ASRProvider):
                             )
                         )
                     session.pending_partial = None
-                    session.source_text = ""
+                    session.translated_text = ""
+                elif event_type == "response.done":
+                    session.response_active = False
+                    session.active_response_source_text = ""
                     session.translated_text = ""
                 elif event_type == "session.finished" and session.finish_requested:
                     session.finish_confirmed.set()

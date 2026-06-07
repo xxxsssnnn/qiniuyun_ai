@@ -1,8 +1,23 @@
+import json
 import os
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.services.qwen_asr import QwenASRProvider, QwenRealtimeSession
+
+
+class EventWebSocket:
+    def __init__(self, events: list[dict]) -> None:
+        self._events = iter(events)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> str:
+        try:
+            return json.dumps(next(self._events))
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
 
 
 class QwenASRProviderTestCase(unittest.TestCase):
@@ -82,6 +97,52 @@ class QwenASRFinishTestCase(unittest.IsolatedAsyncioTestCase):
         sent_payload = websocket.send.await_args.args[0]
         self.assertIn('"type": "session.finish"', sent_payload)
         self.assertTrue(session.finished)
+
+
+class QwenASRMultiTurnTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_second_sentence_survives_while_first_response_finishes(
+        self,
+    ) -> None:
+        provider = QwenASRProvider()
+        websocket = EventWebSocket(
+            [
+                {
+                    "type": "conversation.item.input_audio_transcription.completed",
+                    "transcript": "First sentence.",
+                },
+                {"type": "response.created"},
+                {
+                    "type": "conversation.item.input_audio_transcription.completed",
+                    "transcript": "Second sentence.",
+                },
+                {
+                    "type": "response.text.done",
+                    "text": "第一句话。",
+                },
+                {"type": "response.done"},
+                {"type": "response.created"},
+                {
+                    "type": "response.text.done",
+                    "text": "第二句话。",
+                },
+                {"type": "response.done"},
+            ]
+        )
+        session = QwenRealtimeSession(websocket=websocket, language="en")
+
+        await provider._read_events(session)
+
+        first = session.results.get_nowait()
+        second = session.results.get_nowait()
+        self.assertEqual(
+            (first.text, first.translated_text),
+            ("First sentence.", "第一句话。"),
+        )
+        self.assertEqual(
+            (second.text, second.translated_text),
+            ("Second sentence.", "第二句话。"),
+        )
+        self.assertTrue(session.results.empty())
 
 
 if __name__ == "__main__":
