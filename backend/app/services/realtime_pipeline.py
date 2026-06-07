@@ -12,8 +12,8 @@ class RealtimePipeline:
         self,
         processor: TranscriptionProcessor,
         session_id: str,
-        audio_queue_size: int = 100,
-        result_queue_size: int = 100,
+        audio_queue_size: int = 32,
+        result_queue_size: int = 32,
     ) -> None:
         self.processor = processor
         self.session_id = session_id
@@ -61,8 +61,13 @@ class RealtimePipeline:
             )
 
     async def enqueue_audio(self, chunk: bytes) -> None:
-        if not self._closed:
-            await self.audio_queue.put(chunk)
+        if self._closed:
+            return
+        if self.audio_queue.full():
+            with suppress(asyncio.QueueEmpty):
+                self.audio_queue.get_nowait()
+                self.audio_queue.task_done()
+        await self.audio_queue.put(chunk)
 
     async def _audio_sender(self) -> None:
         while True:
@@ -85,6 +90,10 @@ class RealtimePipeline:
                 result = await self.processor.asr_provider.receive_result(
                     self.session_id
                 )
+                if self.result_queue.full():
+                    with suppress(asyncio.QueueEmpty):
+                        self.result_queue.get_nowait()
+                        self.result_queue.task_done()
                 await self.result_queue.put((result, self._last_audio_size))
             except asyncio.CancelledError:
                 raise

@@ -121,9 +121,12 @@ class QwenASRProvider(ASRProvider):
                     message = error.get("message", "Qwen realtime ASR error")
                     await session.results.put(
                         ASRResult(
-                            text=f"[Qwen ASR error] {message}",
-                            is_final=True,
+                            text="",
+                            translated_text="",
+                            is_final=False,
+                            confidence=0.0,
                             language=session.language,
+                            revision=0,
                         )
                     )
         except asyncio.CancelledError:
@@ -240,14 +243,7 @@ class QwenASRProvider(ASRProvider):
 
     async def test_connection(self) -> None:
         session = await self._create_session()
-        await session.websocket.send(
-            json.dumps(
-                {
-                    "event_id": f"event_{uuid.uuid4().hex}",
-                    "type": "session.finish",
-                }
-            )
-        )
+        session.finished = True
         await session.websocket.close()
         if session.reader_task:
             session.reader_task.cancel()
@@ -324,17 +320,6 @@ class QwenASRProvider(ASRProvider):
         if not session or session.finished:
             return
         session.finished = True
-        try:
-            await session.websocket.send(
-                json.dumps(
-                    {
-                        "event_id": f"event_{uuid.uuid4().hex}",
-                        "type": "session.finish",
-                    }
-                )
-            )
-        except Exception:
-            pass
 
     async def close_session(self, session_id: str) -> None:
         session = self._sessions.get(session_id)

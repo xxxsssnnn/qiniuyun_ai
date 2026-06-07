@@ -1,5 +1,8 @@
+import asyncio
 import itertools
 import os
+import re
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -39,6 +42,37 @@ class TranscriptionProcessor:
         self._counter = itertools.count(1)
         self._active_chunk_ids: Dict[str, str] = {}
         self._revisions: Dict[str, int] = {}
+        self._sentence_buffers: Dict[str, list[str]] = {}
+        self._sentence_buffer_started_at: Dict[str, float] = {}
+        self._min_translate_chars = int(os.getenv("MIN_TRANSLATE_CHARS", "28"))
+        self._max_buffer_seconds = float(os.getenv("MAX_TRANSLATE_BUFFER_SECONDS", "1.2"))
+        self._translation_timeout_seconds = float(os.getenv("TRANSLATION_TIMEOUT_SECONDS", "3.5"))
+
+    def _should_flush_sentence_buffer(self, session_id: str, text: str) -> bool:
+        compact_text = text.strip()
+        if not compact_text:
+            return False
+        if re.search(r"[.!?。！？；;：:]$", compact_text):
+            return True
+        if len(compact_text) >= self._min_translate_chars:
+            return True
+        started_at = self._sentence_buffer_started_at.get(session_id)
+        return started_at is not None and (time.monotonic() - started_at) >= self._max_buffer_seconds
+
+    def _append_sentence_buffer(self, session_id: str, text: str) -> str | None:
+        compact_text = text.strip()
+        if not compact_text:
+            return None
+        buffer = self._sentence_buffers.setdefault(session_id, [])
+        if not buffer:
+            self._sentence_buffer_started_at[session_id] = time.monotonic()
+        buffer.append(compact_text)
+        buffered_text = " ".join(buffer).strip()
+        if not self._should_flush_sentence_buffer(session_id, buffered_text):
+            return None
+        self._sentence_buffers.pop(session_id, None)
+        self._sentence_buffer_started_at.pop(session_id, None)
+        return buffered_text
 
     async def handle_asr_result(
         self,
@@ -47,10 +81,11 @@ class TranscriptionProcessor:
         byte_length: int = 0,
     ) -> None:
         index = next(self._counter)
-        if not asr_result.text.strip() and not (asr_result.translated_text or "").strip():
+        source_text = asr_result.text.strip()
+        model_translated_text = (asr_result.translated_text or "").strip()
+        if not source_text and not model_translated_text:
             return
-        if asr_result.text.strip():
-            glossary_manager.remember_context(session_id, asr_result.text)
+
         is_final = asr_result.is_final
         chunk_id = self._active_chunk_ids.get(session_id)
         if not chunk_id:
@@ -62,21 +97,68 @@ class TranscriptionProcessor:
             current_revision += 1
         self._revisions[chunk_id] = current_revision
 
-        if asr_result.translated_text is not None:
-            translated_text = asr_result.translated_text
-        else:
-            translation_result = await self.translation_provider.translate(
-                asr_result.text,
-                source_language=asr_result.language,
-                target_language=self.target_language,
-                session_id=session_id,
+        if source_text:
+            await self.manager.broadcast(
+                session_id,
+                {
+                    "type": "source_partial" if not is_final else "source_final",
+                    "session_id": session_id,
+                    "payload": {
+                        "chunk_id": chunk_id,
+                        "sourceText": source_text,
+                        "isFinal": is_final,
+                        "revision": current_revision,
+                        "byteLength": byte_length,
+                        "confidence": asr_result.confidence,
+                        "language": asr_result.language,
+                    },
+                },
             )
-            translated_text = translation_result.translated_text
-        if self.tts_provider and is_final:
+
+        if not is_final:
+            return
+
+        translation_source_text = ""
+        if source_text:
+            glossary_manager.remember_context(session_id, source_text)
+            buffered_text = self._append_sentence_buffer(session_id, source_text)
+            self._active_chunk_ids.pop(session_id, None)
+            if buffered_text is None:
+                return
+            translation_source_text = buffered_text
+            chunk_id = f"{session_id}-chunk-{next(self._counter)}"
+            current_revision = 1
+            self._revisions[chunk_id] = current_revision
+        else:
+            translation_source_text = ""
+
+        if translation_source_text:
+            try:
+                translation_result = await asyncio.wait_for(
+                    self.translation_provider.translate(
+                        translation_source_text,
+                        source_language=asr_result.language,
+                        target_language=self.target_language,
+                        session_id=session_id,
+                    ),
+                    timeout=self._translation_timeout_seconds,
+                )
+                translated_text = translation_result.translated_text
+            except asyncio.TimeoutError:
+                translated_text = model_translated_text or "译文生成超时，请稍后查看原文。"
+            except Exception:
+                translated_text = model_translated_text or "译文生成失败，请稍后查看原文。"
+        else:
+            translated_text = model_translated_text
+
+        if not translated_text and model_translated_text:
+            translated_text = model_translated_text
+
+        if self.tts_provider and translated_text:
             await self.tts_provider.speak(translated_text, language=self.target_language)
         event = TranscriptEvent(
             chunk_id=chunk_id,
-            source_text=asr_result.text,
+            source_text=translation_source_text or asr_result.text,
             translated_text=translated_text,
             is_final=is_final,
             revision=current_revision,
@@ -115,4 +197,7 @@ class TranscriptionProcessor:
         await self.handle_asr_result(session_id, asr_result, len(chunk))
 
     async def close_session(self, session_id: str) -> None:
+        self._active_chunk_ids.pop(session_id, None)
+        self._sentence_buffers.pop(session_id, None)
+        self._sentence_buffer_started_at.pop(session_id, None)
         await self.asr_provider.close_session(session_id)

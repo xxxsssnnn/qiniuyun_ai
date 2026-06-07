@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { StatusCard } from '../components/StatusCard'
 import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
@@ -16,13 +15,31 @@ type SubtitleItem = {
   updatedAt: number
 }
 
-const statusLabels = {
-  idle: '空闲',
+type SourceTranscriptItem = {
+  id: string
+  text: string
+  isFinal: boolean
+  updatedAt: number
+}
+
+const audioLabels = {
+  idle: '待机',
   starting: '启动中',
-  recording: '采集中',
+  recording: '实时传译中',
   stopped: '已停止',
-  error: '异常',
+  error: '麦克风异常',
 } as const
+
+const connectionLabels = {
+  idle: '准备连接',
+  connecting: '连接中',
+  connected: '链路在线',
+  disconnected: '链路离线',
+} as const
+
+function isProviderError(sourceText: string, translatedText: string) {
+  return /^\[(Qwen|OpenAI|Whisper|.*error|.*unavailable)/i.test(sourceText.trim()) || /^\[(Qwen|OpenAI|Whisper|.*error|.*unavailable)/i.test(translatedText.trim())
+}
 
 export function LivePage() {
   const sessionId = useMemo(() => 'demo-session', [])
@@ -30,6 +47,7 @@ export function LivePage() {
   const [audioState, setAudioState] = useState<AudioCaptureState>('idle')
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
+  const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
   const audioSessionRef = useRef<{ stop: () => void } | null>(null)
@@ -38,7 +56,9 @@ export function LivePage() {
   const autoSpeakRef = useRef(true)
   const speechLanguageRef = useRef('zh-CN')
   const lastSpokenRef = useRef('')
-  const correctionTotal = subtitles.reduce((total, item) => total + item.correctionCount, 0)
+  const canRecord = connectionStatus === 'connected' && audioState !== 'recording' && audioState !== 'starting'
+  const visibleSubtitles = subtitles.filter((item) => item.isFinal && (item.sourceText.trim() || item.translatedText.trim()))
+  const latestSubtitle = visibleSubtitles[0]
 
   useEffect(() => {
     setConnectionStatus('connecting')
@@ -46,43 +66,69 @@ export function LivePage() {
       onOpen: () => setConnectionStatus('connected'),
       onClose: () => setConnectionStatus('disconnected'),
       onError: () => setConnectionStatus('disconnected'),
-      onFallback: (url) => {
-        setConnectionStatus('connecting')
-        setMessages((prev) => [...prev.slice(-29), { type: 'status', session_id: sessionId, payload: { message: `retry websocket: ${url}` } }])
-      },
+      onFallback: (url) => setMessages((prev) => [...prev.slice(-19), { type: 'status', session_id: sessionId, payload: { message: `尝试连接：${url}` } }]),
       onMessage: (event) => {
         try {
           const message = JSON.parse(event.data as string) as RealtimeMessage & { payload?: any }
-          setMessages((prev) => [...prev.slice(-29), message])
+          setMessages((prev) => [...prev.slice(-19), message])
+
+          if (message.type === 'source_partial' || message.type === 'source_final') {
+            const payload = message.payload as { chunk_id?: string; sourceText?: string; source_text?: string; isFinal?: boolean; is_final?: boolean }
+            const sourceText = payload.sourceText ?? payload.source_text ?? ''
+            if (payload.chunk_id && sourceText.trim() && !isProviderError(sourceText, '')) {
+              setSourceTranscript((current) => {
+                const updatedSource: SourceTranscriptItem = {
+                  id: payload.chunk_id!,
+                  text: sourceText,
+                  isFinal: payload.isFinal ?? payload.is_final ?? message.type === 'source_final',
+                  updatedAt: Date.now(),
+                }
+                return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 16)
+              })
+            }
+            return
+          }
 
           if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
             const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string }
-            if (payload?.chunk_id) {
-              setSubtitles((prev) => {
-                const existing = prev.find((item) => item.id === payload.chunk_id)
-                const sourceText = payload.sourceText ?? (payload as any).source_text ?? existing?.sourceText ?? ''
-                const translatedText = payload.translatedText ?? (payload as any).translated_text ?? existing?.translatedText ?? ''
-                const isFinal = payload.isFinal ?? (payload as any).is_final ?? existing?.isFinal ?? false
-                const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
-                const updated: SubtitleItem = {
-                  id: payload.chunk_id!,
-                  sourceText,
-                  translatedText,
-                  isFinal,
-                  revision,
-                  correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
-                  updatedAt: Date.now(),
-                }
-                if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
-                  const spoke = speakText(translatedText, speechLanguageRef.current)
-                  if (spoke) lastSpokenRef.current = translatedText
-                }
-                return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 10)
-              })
-            }
+            if (!payload?.chunk_id) return
+            setSubtitles((prev) => {
+              const existing = prev.find((item) => item.id === payload.chunk_id)
+              const sourceText = payload.sourceText ?? (payload as any).source_text ?? existing?.sourceText ?? ''
+              const translatedText = payload.translatedText ?? (payload as any).translated_text ?? existing?.translatedText ?? ''
+              const isFinal = payload.isFinal ?? (payload as any).is_final ?? existing?.isFinal ?? false
+              const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
+              const providerError = isProviderError(sourceText, translatedText)
+
+              if (sourceText.trim() && !providerError) {
+                setSourceTranscript((current) => {
+                  const updatedSource: SourceTranscriptItem = { id: payload.chunk_id!, text: sourceText, isFinal, updatedAt: Date.now() }
+                  return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 16)
+                })
+              }
+
+              if (!isFinal || providerError || (!sourceText.trim() && !translatedText.trim())) {
+                return prev.filter((item) => item.id !== payload.chunk_id)
+              }
+
+              const updated: SubtitleItem = {
+                id: payload.chunk_id!,
+                sourceText,
+                translatedText,
+                isFinal,
+                revision,
+                correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
+                updatedAt: Date.now(),
+              }
+              if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
+                const spoke = speakText(translatedText, speechLanguageRef.current)
+                if (spoke) lastSpokenRef.current = translatedText
+              }
+              return [updated, ...prev.filter((item) => item.id !== payload.chunk_id)].slice(0, 8)
+            })
           }
         } catch {
-          // ignore malformed payloads in the scaffold stage
+          // ignore malformed payloads
         }
       },
     })
@@ -90,18 +136,8 @@ export function LivePage() {
 
     void fetchLatestChunk().then((chunk) => {
       if (!chunk) return
-      setSubtitles([
-        {
-          id: chunk.chunk_id,
-          sourceText: chunk.sourceText ?? chunk.source_text ?? '',
-          translatedText: chunk.translatedText ?? chunk.translated_text ?? '',
-          isFinal: chunk.isFinal ?? chunk.is_final ?? false,
-          revision: chunk.revision,
-          correctionCount: 0,
-          updatedAt: Date.now(),
-        },
-      ])
-    })
+      setSubtitles([{ id: chunk.chunk_id, sourceText: chunk.sourceText ?? chunk.source_text ?? '', translatedText: chunk.translatedText ?? chunk.translated_text ?? '', isFinal: chunk.isFinal ?? chunk.is_final ?? false, revision: chunk.revision, correctionCount: 0, updatedAt: Date.now() }])
+    }).catch(() => undefined)
 
     return () => {
       audioSessionRef.current?.stop()
@@ -115,48 +151,28 @@ export function LivePage() {
     void fetchGlossary().then(setGlossary).catch(() => setGlossary([]))
     void fetchSettings().then((settings) => {
       const language = settings.target_language ?? 'zh'
-      speechLanguageRef.current = {
-        zh: 'zh-CN',
-        yue: 'zh-HK',
-        en: 'en-US',
-        ja: 'ja-JP',
-        ko: 'ko-KR',
-        fr: 'fr-FR',
-        de: 'de-DE',
-        es: 'es-ES',
-        ru: 'ru-RU',
-        pt: 'pt-PT',
-        it: 'it-IT',
-        ar: 'ar-SA',
-        th: 'th-TH',
-        vi: 'vi-VN',
-      }[language] ?? language
+      speechLanguageRef.current = { zh: 'zh-CN', yue: 'zh-HK', en: 'en-US', ja: 'ja-JP', ko: 'ko-KR', fr: 'fr-FR', de: 'de-DE', es: 'es-ES', ru: 'ru-RU', pt: 'pt-PT', it: 'it-IT', ar: 'ar-SA', th: 'th-TH', vi: 'vi-VN' }[language] ?? language
     }).catch(() => undefined)
   }, [])
 
   const handleStartDemo = () => {
     if (!socket || socket.current.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'start_demo' }))
-    setMessages((prev) => [...prev.slice(-29), { type: 'status', session_id: sessionId, payload: { message: 'demo requested' } }])
   }
 
   const handleStartAudio = async () => {
-    if (!socket || socket.current.readyState !== WebSocket.OPEN || audioState === 'recording' || audioState === 'starting') return
+    if (!socket || socket.current.readyState !== WebSocket.OPEN || !canRecord) return
     try {
       setAudioState('starting')
       socket.send(JSON.stringify({ type: 'start_audio', session_id: sessionId }))
       const session = await startAudioCapture((chunk) => {
-        if (socket.current.readyState === WebSocket.OPEN) {
-          socket.send(chunk)
-        }
+        if (socket.current.readyState === WebSocket.OPEN) socket.send(chunk)
       })
       audioSessionRef.current = session
       setAudioSession(session)
       setAudioState('recording')
-      setMessages((prev) => [...prev.slice(-29), { type: 'audio', session_id: sessionId, payload: { message: 'microphone recording started' } }])
     } catch {
       setAudioState('error')
-      setMessages((prev) => [...prev.slice(-29), { type: 'error', session_id: sessionId, payload: { message: 'failed to start microphone' } }])
     }
   }
 
@@ -165,83 +181,84 @@ export function LivePage() {
     audioSessionRef.current = null
     setAudioSession(null)
     setAudioState('stopped')
-    if (socket && socket.current.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'stop_audio', session_id: sessionId }))
-    }
-    setMessages((prev) => [...prev.slice(-29), { type: 'audio', session_id: sessionId, payload: { message: 'microphone recording stopped' } }])
+    if (socket && socket.current.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'stop_audio', session_id: sessionId }))
   }
 
   const handleToggleAutoSpeak = () => {
     const nextAutoSpeak = !autoSpeakRef.current
     autoSpeakRef.current = nextAutoSpeak
     setAutoSpeak(nextAutoSpeak)
-
-    if (!nextAutoSpeak) {
-      stopSpeaking()
-    }
+    if (!nextAutoSpeak) stopSpeaking()
   }
 
   return (
-    <main className="page-shell">
-      <section className="page-hero hero-grid">
-        <div className="hero-copy">
-          <span className="badge">Live</span>
-          <h2>实时传译工作台</h2>
-          <p>这里用于处理麦克风采集、演示字幕、实时字幕流和手动回滚，是系统的核心作业区。</p>
-          <div className="hero-actions">
-            <button className="primary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>开始演示字幕</button>
-            <button className="secondary-button" onClick={handleStartAudio} disabled={connectionStatus !== 'connected' || audioState === 'recording' || audioState === 'starting'}>开始采集麦克风</button>
-            <button className="secondary-button" onClick={handleStopAudio} disabled={audioState !== 'recording'}>停止采集</button>
-            <button className="secondary-button" onClick={handleToggleAutoSpeak}>{autoSpeak ? '关闭自动播报' : '开启自动播报'}</button>
+    <main className="sci-live-page">
+      <section className="sci-toolbar">
+        <div className="sci-brandline">
+          <span className={`sci-signal ${audioState === 'recording' ? 'active' : ''}`} />
+          <div>
+            <strong>Realtime Interpretation Core</strong>
+            <span>{connectionLabels[connectionStatus]} · {audioLabels[audioState]}</span>
           </div>
         </div>
-        <div className="hero-side panel">
-          <div className="live-stat"><span>连接</span><strong>{connectionStatus}</strong></div>
-          <div className="live-stat"><span>音频</span><strong>{statusLabels[audioState]}</strong></div>
-          <div className="live-stat"><span>字幕</span><strong>{subtitles.length}</strong></div>
-          <div className="live-stat"><span>修正</span><strong>{correctionTotal}</strong></div>
-          <div className="live-stat"><span>术语</span><strong>{glossary.length}</strong></div>
-          <div className="live-stat"><span>播报</span><strong>{autoSpeak ? '开启' : '关闭'}</strong></div>
+        <div className="sci-metrics">
+          <span>译文 {visibleSubtitles.length}</span>
+          <span>原文 {sourceTranscript.length}</span>
+          <span>术语 {glossary.length}</span>
+        </div>
+        <div className="sci-actions">
+          <button className="primary-button" onClick={handleStartAudio} disabled={!canRecord}>{audioState === 'recording' ? '运行中' : '启动传译'}</button>
+          <button className="secondary-button" onClick={handleStopAudio} disabled={audioState !== 'recording'}>停止</button>
+          <button className="secondary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>演示</button>
+          <button className="secondary-button" onClick={handleToggleAutoSpeak}>{autoSpeak ? '播报 ON' : '播报 OFF'}</button>
         </div>
       </section>
 
-      <section className="panel-grid stats-grid">
-        <StatusCard title="WebSocket" description={`会话：${sessionId} · 当前状态：${connectionStatus}`} />
-        <StatusCard title="音频采集" description={`当前状态：${statusLabels[audioState]}`} />
-        <StatusCard title="实时消息" description={`最近接收 ${messages.length} 条消息。`} />
-      </section>
-
-      <section className="content-grid">
-        <article className="panel subtitle-panel">
-          <div className="panel-header"><div><h2>实时字幕</h2><p>显示原文、译文和修订状态。</p></div><span className="panel-badge">Live</span></div>
-          <div className="subtitle-list">
-            {subtitles.length === 0 ? <div className="empty-state"><p>等待字幕流…</p></div> : subtitles.map((item) => (
-              <div key={item.id} className={`subtitle-item ${item.isFinal ? 'final' : 'draft'}`}>
-                <div className="subtitle-topline"><span>{item.isFinal ? 'FINAL' : 'DRAFT'}</span><small>revision {item.revision} · 修正 {item.correctionCount} 次</small></div>
-                <p className="source">{item.sourceText}</p>
-                <p className="translation">{item.translatedText}</p>
-              </div>
-            ))}
+      <section className="sci-stage-grid">
+        <article className="sci-panel sci-translation-panel">
+          <div className="sci-panel-head">
+            <span>TRANSLATION OUTPUT</span>
+            <small>{latestSubtitle ? 'FINAL' : 'STANDBY'}</small>
           </div>
+          <div className="sci-translation-screen">
+            {latestSubtitle ? (
+              <>
+                <p>{latestSubtitle.sourceText || '正在等待原文...'}</p>
+                <h2>{latestSubtitle.translatedText || '译文生成中...'}</h2>
+              </>
+            ) : (
+              <div className="sci-empty-screen">
+                <h2>等待实时传译</h2>
+                <p>点击“启动传译”，允许麦克风权限后开始显示内容。</p>
+              </div>
+            )}
+          </div>
+          {visibleSubtitles.length > 1 ? (
+            <div className="sci-history-strip">
+              {visibleSubtitles.slice(1, 4).map((item) => (
+                <div key={item.id}>
+                  <span>{item.sourceText || '原文暂缺'}</span>
+                  <strong>{item.translatedText || '译文生成中'}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </article>
 
-        <article className="panel glossary-panel">
-          <div className="panel-header"><div><h2>术语快览</h2><p>这里展示当前术语库的简略列表。</p></div><span className="panel-badge">Glossary</span></div>
-          <div className="glossary-list">
-            {glossary.length === 0 ? <div className="empty-state compact"><p>暂无术语。</p></div> : glossary.slice(0, 5).map((item) => (
-              <div className="glossary-item" key={item.source}>
-                <div className="glossary-text"><strong>{item.source}</strong><span>→ {item.target}</span></div>
+        <article className="sci-panel sci-source-panel">
+          <div className="sci-panel-head">
+            <span>原文实时记录</span>
+            <small>{audioState === 'recording' ? 'LIVE' : 'IDLE'}</small>
+          </div>
+          <div className="sci-source-stream">
+            {sourceTranscript.length === 0 ? (
+              <div className="sci-source-empty">开始后，识别到的原文会实时出现在这里。</div>
+            ) : sourceTranscript.map((item) => (
+              <div key={item.id} className={`sci-source-line ${item.isFinal ? 'final' : 'draft'}`}>
+                <p>{item.text}</p>
+                <small>{item.isFinal ? '已确认' : '识别中'} · {new Date(item.updatedAt).toLocaleTimeString()}</small>
               </div>
             ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="panel-grid single-grid">
-        <article className="panel message-panel">
-          <div className="panel-header"><div><h2>最近消息</h2><p>查看 WebSocket 事件的实时流转。</p></div><span className="panel-badge">Stream</span></div>
-          <div className="message-list">
-            {messages.length === 0 ? <div className="empty-state compact"><p>等待 WebSocket 消息…</p></div> : messages.slice().reverse().map((message, index) => <pre key={`${message.type}-${index}`} className="message-item">{JSON.stringify(message, null, 2)}</pre>)}
           </div>
         </article>
       </section>
