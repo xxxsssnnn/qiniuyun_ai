@@ -31,7 +31,7 @@ class QwenASRProviderTestCase(unittest.TestCase):
                 "type": "semantic_vad",
                 "threshold": 0.1,
                 "prefix_padding_ms": 500,
-                "silence_duration_ms": 900,
+                "silence_duration_ms": 600,
                 "create_response": True,
                 "interrupt_response": True,
             },
@@ -48,7 +48,7 @@ class QwenASRProviderTestCase(unittest.TestCase):
 
         with patch.dict(os.environ, {"QWEN_VAD_SILENCE_MS": "invalid"}):
             provider = QwenASRProvider()
-        self.assertEqual(provider.vad_silence_duration_ms, 900)
+        self.assertEqual(provider.vad_silence_duration_ms, 600)
 
     def test_discontinuous_speech_vad_parameters_are_bounded(self) -> None:
         with patch.dict(

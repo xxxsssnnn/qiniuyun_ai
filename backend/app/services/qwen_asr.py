@@ -98,8 +98,8 @@ class QwenASRProvider(ASRProvider):
         self.region = os.getenv("DASHSCOPE_REGION", "cn").lower()
         self.vad_silence_duration_ms = _bounded_int_env(
             "QWEN_VAD_SILENCE_MS",
-            default=900,
-            minimum=500,
+            default=600,
+            minimum=200,
             maximum=3000,
         )
         self.vad_threshold = _bounded_float_env(
