@@ -19,6 +19,7 @@ type SubtitleItem = {
   id: string
   sourceText: string
   translatedText: string
+  directTranslation: string
   isFinal: boolean
   revision: number
   correctionCount: number
@@ -30,10 +31,13 @@ type SubtitleItem = {
 
 type SourceTranscriptItem = {
   id: string
-  text: string
+  sourceText: string
+  translatedText: string
   isFinal: boolean
   updatedAt: number
 }
+
+const SOURCE_PAGE_SIZE = 4
 
 const audioLabels = {
   idle: '待机',
@@ -70,6 +74,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
+  const [sourcePage, setSourcePage] = useState(1)
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<TranscriptSessionSummary[]>([])
   const [newSessionName, setNewSessionName] = useState('')
@@ -90,10 +95,16 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
     : null
   const selectedSubtitle = selectedSource
     ? visibleSubtitles.find((item) => item.id === selectedSource.id)
-      ?? visibleSubtitles.find((item) => item.sourceText.trim() === selectedSource.text.trim())
+      ?? visibleSubtitles.find((item) => item.sourceText.trim() === selectedSource.sourceText.trim())
     : null
   const displayedSubtitle = selectedSourceId ? selectedSubtitle : latestSubtitle
   const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
+  const sourceTotalPages = Math.max(1, Math.ceil(sourceTranscript.length / SOURCE_PAGE_SIZE))
+  const currentSourcePage = Math.min(sourcePage, sourceTotalPages)
+  const visibleSourceTranscript = sourceTranscript.slice(
+    (currentSourcePage - 1) * SOURCE_PAGE_SIZE,
+    currentSourcePage * SOURCE_PAGE_SIZE,
+  )
 
   useEffect(() => {
     void fetchTranscriptSessions()
@@ -115,6 +126,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
     if (!sessionId) return
     setSubtitles([])
     setSourceTranscript([])
+    setSourcePage(1)
     setSelectedSourceId(null)
     setConnectionStatus('connecting')
     const realtimeSocket = createRealtimeSocketWithFallback(sessionId, {
@@ -132,25 +144,29 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
             const sourceText = payload.sourceText ?? payload.source_text ?? ''
             if (payload.chunk_id && sourceText.trim() && !isProviderError(sourceText, '')) {
               setSourceTranscript((current) => {
+                const existing = current.find((item) => item.id === payload.chunk_id)
                 const updatedSource: SourceTranscriptItem = {
                   id: payload.chunk_id!,
-                  text: sourceText,
+                  sourceText,
+                  translatedText: existing?.translatedText ?? '',
                   isFinal: payload.isFinal ?? payload.is_final ?? message.type === 'source_final',
                   updatedAt: Date.now(),
                 }
-                return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 16)
+                return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 40)
               })
+              setSourcePage(1)
             }
             return
           }
 
           if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
-            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string; autoCorrection?: boolean; reasons?: string[] }
+            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string; autoCorrection?: boolean; reasons?: string[]; direct_translation?: string }
             if (!payload?.chunk_id) return
             setSubtitles((prev) => {
               const existing = prev.find((item) => item.id === payload.chunk_id)
               const sourceText = payload.sourceText ?? (payload as any).source_text ?? existing?.sourceText ?? ''
               const translatedText = payload.translatedText ?? (payload as any).translated_text ?? existing?.translatedText ?? ''
+              const directTranslation = payload.directTranslation ?? payload.direct_translation ?? existing?.directTranslation ?? translatedText
               const isFinal = payload.isFinal ?? (payload as any).is_final ?? existing?.isFinal ?? false
               const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
               const autoCorrection = payload.autoCorrection ?? existing?.autoCorrection ?? false
@@ -159,9 +175,18 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
 
               if (sourceText.trim() && !isProviderError(sourceText, '')) {
                 setSourceTranscript((current) => {
-                  const updatedSource: SourceTranscriptItem = { id: payload.chunk_id!, text: sourceText, isFinal, updatedAt: Date.now() }
-                  return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 16)
+                  const updatedSource: SourceTranscriptItem = {
+                    id: payload.chunk_id!,
+                    sourceText,
+                    translatedText: providerError
+                      ? getProviderErrorMessage(translatedText || sourceText)
+                      : translatedText,
+                    isFinal,
+                    updatedAt: Date.now(),
+                  }
+                  return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 40)
                 })
+                setSourcePage(1)
               }
 
               if (!isFinal || (!sourceText.trim() && !translatedText.trim())) {
@@ -172,6 +197,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
                 id: payload.chunk_id!,
                 sourceText,
                 translatedText: providerError ? getProviderErrorMessage(translatedText || sourceText) : translatedText,
+                directTranslation,
                 isFinal,
                 revision,
                 correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : (autoCorrection ? 1 : 0),
@@ -199,14 +225,16 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
       return chunks
     }).then((chunks) => {
       if (!chunks.length) return
-      setSubtitles(chunks.slice(-8).reverse().map((chunk: any) => {
+      const restoredItems = chunks.slice().reverse().map((chunk: any) => {
         const sourceText = chunk.sourceText ?? chunk.source_text ?? ''
         const translatedText = chunk.translatedText ?? chunk.translated_text ?? ''
+        const directTranslation = chunk.directTranslation ?? chunk.direct_translation ?? translatedText
         const providerError = isProviderError(sourceText, translatedText)
         return {
           id: chunk.chunk_id,
           sourceText,
           translatedText: providerError ? getProviderErrorMessage(translatedText || sourceText) : translatedText,
+          directTranslation,
           isFinal: chunk.isFinal ?? chunk.is_final ?? false,
           revision: chunk.revision ?? 0,
           correctionCount: chunk.auto_correction ? 1 : 0,
@@ -215,7 +243,16 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
           translationError: providerError,
           updatedAt: Date.now(),
         }
-      }))
+      })
+      setSubtitles(restoredItems.slice(0, 8))
+      setSourceTranscript(restoredItems.map((item) => ({
+        id: item.id,
+        sourceText: item.sourceText,
+        translatedText: item.translatedText,
+        isFinal: item.isFinal,
+        updatedAt: item.updatedAt,
+      })))
+      setSourcePage(1)
     }).catch(() => undefined)
 
     return () => {
@@ -371,6 +408,15 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
             {displayedSubtitle ? (
               <>
                 <p>{displayedSubtitle.sourceText || '正在等待原文...'}</p>
+                {displayedSubtitle.autoCorrection && displayedSubtitle.directTranslation ? (
+                  <div className="sci-direct-translation">
+                    <small>原始直译</small>
+                    <p>{displayedSubtitle.directTranslation}</p>
+                  </div>
+                ) : null}
+                <small className="sci-translation-label">
+                  {displayedSubtitle.autoCorrection ? '修正后译文' : '译文'}
+                </small>
                 <h2>{displayedSubtitle.translatedText || '译文生成中...'}</h2>
                 {displayedSubtitle.translationError ? (
                   <small className="sci-correction-badge">请在设置中检查翻译模型与 API Key</small>
@@ -383,8 +429,8 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
               </>
             ) : selectedSource ? (
               <>
-                <p>{selectedSource.text}</p>
-                <h2>译文生成中...</h2>
+                <p>{selectedSource.sourceText}</p>
+                <h2>{selectedSource.translatedText || '译文生成中...'}</h2>
               </>
             ) : (
               <div className="sci-empty-screen">
@@ -408,12 +454,34 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
         <article className="sci-panel sci-source-panel">
           <div className="sci-panel-head">
             <span>原文实时记录</span>
-            <small>{audioState === 'recording' ? 'LIVE' : 'IDLE'}</small>
+            <div className="sci-source-pagination">
+              {sourceTranscript.length > SOURCE_PAGE_SIZE ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={currentSourcePage <= 1}
+                    onClick={() => setSourcePage((value) => Math.max(1, value - 1))}
+                  >
+                    上一页
+                  </button>
+                  <small>{currentSourcePage}/{sourceTotalPages}</small>
+                  <button
+                    type="button"
+                    disabled={currentSourcePage >= sourceTotalPages}
+                    onClick={() => setSourcePage((value) => Math.min(sourceTotalPages, value + 1))}
+                  >
+                    下一页
+                  </button>
+                </>
+              ) : (
+                <small>{audioState === 'recording' ? 'LIVE' : 'IDLE'}</small>
+              )}
+            </div>
           </div>
           <div className="sci-source-stream">
             {sourceTranscript.length === 0 ? (
               <div className="sci-source-empty">开始后，识别到的原文会实时出现在这里。</div>
-            ) : sourceTranscript.map((item) => (
+            ) : visibleSourceTranscript.map((item) => (
               <button
                 type="button"
                 key={item.id}
@@ -421,7 +489,8 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
                 aria-pressed={selectedSourceId === item.id}
                 onClick={() => setSelectedSourceId(item.id)}
               >
-                <p>{item.text}</p>
+                <p>{item.sourceText}</p>
+                <strong>{item.translatedText || (item.isFinal ? '译文生成中...' : '等待完整语句')}</strong>
                 <small>
                   {selectedSourceId === item.id ? '正在查看' : item.isFinal ? '已确认' : '识别中'}
                   {' · '}

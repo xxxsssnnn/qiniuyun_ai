@@ -41,12 +41,27 @@ class TranscriptStore:
         ).scalar_one_or_none()
         if existing is not None:
             return
+        current = db.execute(
+            select(TranscriptRecord).where(
+                TranscriptRecord.chunk_id == chunk.chunk_id
+            )
+        ).scalar_one_or_none()
+        direct_translation = (
+            chunk.direct_translation
+            or (
+                current.direct_translation or current.translated_text
+                if current is not None
+                else ""
+            )
+            or chunk.translated_text
+        )
         db.add(
             TranscriptRevision(
                 session_id=chunk.session_id,
                 chunk_id=chunk.chunk_id,
                 source_text=chunk.source_text,
                 translated_text=chunk.translated_text,
+                direct_translation=direct_translation,
                 is_final=chunk.is_final,
                 revision=chunk.revision,
                 auto_correction=chunk.auto_correction,
@@ -132,6 +147,7 @@ class TranscriptStore:
                 chunk_id=chunk.chunk_id,
                 source_text=chunk.source_text,
                 translated_text=chunk.translated_text,
+                direct_translation=chunk.direct_translation or chunk.translated_text,
                 is_final=chunk.is_final,
                 revision=chunk.revision,
                 auto_correction=chunk.auto_correction,
@@ -143,6 +159,11 @@ class TranscriptStore:
         record.session_id = chunk.session_id
         record.source_text = chunk.source_text
         record.translated_text = chunk.translated_text
+        record.direct_translation = (
+            chunk.direct_translation
+            or record.direct_translation
+            or chunk.translated_text
+        )
         record.is_final = chunk.is_final
         record.revision = chunk.revision
         record.auto_correction = chunk.auto_correction
@@ -253,6 +274,7 @@ class TranscriptStore:
             chunk_id=record.chunk_id,
             source_text=record.source_text,
             translated_text=record.translated_text,
+            direct_translation=record.direct_translation or record.translated_text,
             is_final=record.is_final,
             session_id=record.session_id,
             revision=record.revision,
@@ -269,6 +291,7 @@ class TranscriptStore:
             chunk_id=record.chunk_id,
             source_text=record.source_text,
             translated_text=record.translated_text,
+            direct_translation=record.direct_translation or record.translated_text,
             is_final=record.is_final,
             session_id=record.session_id,
             revision=record.revision,

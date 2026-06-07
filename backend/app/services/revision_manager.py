@@ -9,6 +9,7 @@ class RevisionRecord:
     chunk_id: str
     source_text: str
     translated_text: str
+    direct_translation: str
     revision: int
     is_final: bool
 
@@ -20,6 +21,7 @@ class CorrectionEvent:
     current_revision: int
     source_text: str
     translated_text: str
+    direct_translation: str
     is_final: bool
 
 
@@ -32,6 +34,7 @@ class RevisionManager:
             chunk_id=chunk.chunk_id,
             source_text=chunk.source_text,
             translated_text=chunk.translated_text,
+            direct_translation=chunk.direct_translation or chunk.translated_text,
             revision=revision,
             is_final=chunk.is_final,
         )
@@ -65,6 +68,7 @@ class RevisionManager:
             current_revision=target.revision,
             source_text=target.source_text,
             translated_text=target.translated_text,
+            direct_translation=target.direct_translation,
             is_final=target.is_final,
         )
 
@@ -78,6 +82,7 @@ class RevisionManager:
                 "currentRevision": event.current_revision,
                 "sourceText": event.source_text,
                 "translatedText": event.translated_text,
+                "directTranslation": event.direct_translation,
                 "isFinal": event.is_final,
             },
         }

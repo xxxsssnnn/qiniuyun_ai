@@ -10,6 +10,7 @@ export type StreamTextChunk = {
   session_id: string
   source_text: string
   translated_text: string
+  direct_translation: string
   is_final: boolean
   start_ms?: number | null
   end_ms?: number | null
@@ -163,6 +164,15 @@ export async function rollbackTranscriptChunk(
     },
   )
   if (!response.ok) throw new Error(`Failed to rollback revision: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk>
+}
+
+export async function restoreDirectTranslation(sessionId: string, chunkId: string) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/restore-direct`,
+    { method: 'POST' },
+  )
+  if (!response.ok) throw new Error(`Failed to restore direct translation: ${response.status}`)
   return response.json() as Promise<StreamTextChunk>
 }
 

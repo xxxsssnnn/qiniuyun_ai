@@ -97,6 +97,7 @@ class TranscriptStoreSessionTestCase(unittest.TestCase):
                     session_id="session-a",
                     source_text="We use cache.",
                     translated_text="我们使用缓存。",
+                    direct_translation="我们使用现金。",
                     is_final=True,
                     revision=2,
                     auto_correction=True,
@@ -107,6 +108,7 @@ class TranscriptStoreSessionTestCase(unittest.TestCase):
 
         self.assertEqual([item.revision for item in history], [2, 1])
         self.assertEqual(history[0].source_text, "We use cache.")
+        self.assertEqual(history[0].direct_translation, "我们使用现金。")
         self.assertEqual(history[1].source_text, "We use cash.")
 
 

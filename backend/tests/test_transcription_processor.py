@@ -147,6 +147,7 @@ class TranscriptionProcessorTranslationTestCase(unittest.IsolatedAsyncioTestCase
         corrected = buffer.list_session("session-1")[0]
         self.assertEqual(corrected.source_text, "We use cache.")
         self.assertEqual(corrected.translated_text, "我们使用缓存。")
+        self.assertEqual(corrected.direct_translation, "我们使用现金。")
         self.assertEqual(corrected.revision, 2)
         self.assertTrue(corrected.auto_correction)
         save_chunk.assert_called_once()

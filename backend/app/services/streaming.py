@@ -8,6 +8,7 @@ class TranscriptChunk:
     chunk_id: str
     source_text: str
     translated_text: str = ""
+    direct_translation: str = ""
     is_final: bool = False
     session_id: str = "default"
     revision: int = 0
@@ -61,6 +62,7 @@ class TranscriptBuffer:
                 "session_id": chunk.session_id,
                 "source_text": chunk.source_text,
                 "translated_text": chunk.translated_text,
+                "direct_translation": chunk.direct_translation,
                 "is_final": chunk.is_final,
                 "revision": chunk.revision,
                 "auto_correction": chunk.auto_correction,

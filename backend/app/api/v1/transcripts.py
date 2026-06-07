@@ -48,6 +48,7 @@ async def create_chunk(payload: TranscriptChunkCreate) -> TranscriptChunkRead:
         chunk_id=payload.chunk_id,
         source_text=payload.source_text,
         translated_text=payload.translated_text or "",
+        direct_translation=payload.translated_text or "",
         is_final=payload.is_final,
         revision=0,
     )
@@ -68,6 +69,7 @@ async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
         chunk_id=payload.chunk_id,
         source_text=payload.source_text,
         translated_text=payload.translated_text,
+        direct_translation=payload.translated_text,
         is_final=payload.is_final,
         session_id=payload.session_id,
         revision=payload.revision,
@@ -144,6 +146,7 @@ async def rollback_chunk(
         chunk_id=chunk_id,
         source_text=target.source_text,
         translated_text=target.translated_text,
+        direct_translation=latest.direct_translation or target.translated_text,
         is_final=target.is_final,
         session_id=session_id,
         revision=latest.revision + 1,
@@ -160,6 +163,62 @@ async def rollback_chunk(
             current_revision=restored.revision,
             source_text=restored.source_text,
             translated_text=restored.translated_text,
+            direct_translation=restored.direct_translation,
+            is_final=restored.is_final,
+        )
+    )
+    event["session_id"] = session_id
+    event["payload"]["revision"] = restored.revision
+    event["payload"]["autoCorrection"] = True
+    event["payload"]["reasons"] = restored.correction_reasons
+    await manager.broadcast(session_id, event)
+    return TranscriptChunkRead.model_validate(restored)
+
+
+@router.post(
+    "/sessions/{session_id}/chunks/{chunk_id}/restore-direct",
+    response_model=TranscriptChunkRead,
+)
+async def restore_direct_translation(
+    session_id: str,
+    chunk_id: str,
+) -> TranscriptChunkRead:
+    latest = next(
+        (
+            item
+            for item in transcript_store.list_chunks(
+                session_id,
+                final_only=False,
+            )
+            if item.chunk_id == chunk_id
+        ),
+        None,
+    )
+    if latest is None or not latest.direct_translation:
+        raise HTTPException(status_code=404, detail="Direct translation not found")
+
+    restored = TranscriptChunk(
+        chunk_id=chunk_id,
+        source_text=latest.source_text,
+        translated_text=latest.direct_translation,
+        direct_translation=latest.direct_translation,
+        is_final=latest.is_final,
+        session_id=session_id,
+        revision=latest.revision + 1,
+        auto_correction=True,
+        correction_reasons=["已恢复原始直译"],
+    )
+    buffer.upsert(restored)
+    transcript_store.save_chunk(restored)
+    revision_manager.record(restored, restored.revision)
+    event = revision_manager.correction_payload(
+        CorrectionEvent(
+            chunk_id=restored.chunk_id,
+            previous_revision=latest.revision,
+            current_revision=restored.revision,
+            source_text=restored.source_text,
+            translated_text=restored.translated_text,
+            direct_translation=restored.direct_translation,
             is_final=restored.is_final,
         )
     )

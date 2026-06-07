@@ -546,6 +546,28 @@ small,
   gap: 0.75rem;
 }
 
+.sci-source-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sci-source-pagination button {
+  padding: 0.28rem 0.5rem;
+  border: 1px solid rgba(94, 234, 212, 0.2);
+  border-radius: 8px;
+  color: #d7fffb;
+  background: rgba(94, 234, 212, 0.07);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.sci-source-pagination button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
 .sci-latest-button {
   padding: 0.35rem 0.65rem;
   border: 1px solid rgba(94, 234, 212, 0.28);
@@ -606,7 +628,7 @@ small,
   max-width: 980px;
   margin: 0;
   color: var(--text);
-  font-size: clamp(2.6rem, 6vw, 5.8rem);
+  font-size: clamp(2.2rem, 5vw, 4.8rem);
   line-height: 1.13;
   letter-spacing: -0.06em;
   text-shadow: 0 0 34px rgba(96, 165, 250, 0.18);
@@ -714,6 +736,37 @@ small,
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
+.sci-translation-label {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: var(--cyan);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.sci-direct-translation {
+  max-width: 920px;
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid rgba(96, 165, 250, 0.55);
+  border-radius: 10px;
+  background: rgba(96, 165, 250, 0.07);
+}
+
+.sci-direct-translation small {
+  color: #8fb5e8;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.sci-direct-translation p {
+  margin: 0.35rem 0 0;
+  color: #b8cbe3;
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
 .sci-source-line:hover {
   border-color: rgba(94, 234, 212, 0.34);
   background: rgba(11, 29, 48, 0.76);
@@ -806,6 +859,16 @@ small,
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
 }
 
+.sci-source-line strong {
+  display: block;
+  margin-top: 0.45rem;
+  color: #f1f7ff;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .sessions-grid {
   grid-template-columns: minmax(260px, 0.65fr) minmax(0, 1.7fr);
 }
@@ -831,6 +894,31 @@ small,
   color: #6f7d8f;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.correction-translation-block {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.correction-translation-block.corrected {
+  background: rgba(52, 211, 153, 0.07);
+}
+
+.correction-translation-block small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.correction-translation-block p {
+  margin: 0.35rem 0 0;
+}
+
+.correction-restore-button {
+  margin-top: 0.8rem;
 }
 
 .correction-pagination {

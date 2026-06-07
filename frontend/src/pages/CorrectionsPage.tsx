@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   fetchSessionRevisions,
   fetchTranscriptSessions,
+  restoreDirectTranslation,
   type StreamTextChunk,
   type TranscriptSessionSummary,
 } from '../services/api'
@@ -16,6 +17,11 @@ export function CorrectionsPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+
+  const reloadRevisions = async (targetSessionId: string) => {
+    const items = await fetchSessionRevisions(targetSessionId)
+    setRevisions(items.filter((item) => item.auto_correction))
+  }
 
   useEffect(() => {
     void fetchTranscriptSessions()
@@ -39,14 +45,28 @@ export function CorrectionsPage() {
     }
     setLoading(true)
     setMessage('')
-    void fetchSessionRevisions(sessionId)
-      .then((items) => setRevisions(items.filter((item) => item.auto_correction)))
+    void reloadRevisions(sessionId)
       .catch(() => {
         setRevisions([])
         setMessage('修订记录加载失败')
       })
       .finally(() => setLoading(false))
   }, [sessionId])
+
+  const handleRestoreDirect = async (item: StreamTextChunk) => {
+    if (!sessionId || !item.direct_translation) return
+    setLoading(true)
+    setMessage('')
+    try {
+      await restoreDirectTranslation(sessionId, item.chunk_id)
+      await reloadRevisions(sessionId)
+      setMessage('已恢复原始直译，并生成新的修订记录。')
+    } catch {
+      setMessage('恢复原始直译失败，请检查后端服务。')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const totalPages = Math.max(1, Math.ceil(revisions.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -97,12 +117,29 @@ export function CorrectionsPage() {
             {visibleRevisions.map((item) => (
               <div key={`${item.chunk_id}-${item.revision}`} className="subtitle-item">
                 <p className="source">{item.source_text}</p>
-                <p className="translation">{item.translated_text}</p>
+                <div className="correction-translation-block">
+                  <small>原始直译</small>
+                  <p>{item.direct_translation || item.translated_text}</p>
+                </div>
+                <div className="correction-translation-block corrected">
+                  <small>修正后译文</small>
+                  <p className="translation">{item.translated_text}</p>
+                </div>
                 <small className="subtitle-correction-note">
                   {item.correction_reasons?.length
                     ? item.correction_reasons.join('；')
                     : '字幕已自动修正'}
                 </small>
+                {item.direct_translation && item.translated_text !== item.direct_translation ? (
+                  <button
+                    type="button"
+                    className="secondary-button correction-restore-button"
+                    disabled={loading}
+                    onClick={() => void handleRestoreDirect(item)}
+                  >
+                    恢复原始直译
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>

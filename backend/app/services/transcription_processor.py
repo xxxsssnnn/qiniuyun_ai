@@ -117,6 +117,7 @@ class TranscriptionProcessor:
         current_revision: int,
         source_text: str,
         translated_text: str,
+        direct_translation: str,
         is_final: bool,
         reasons: list[str],
     ) -> None:
@@ -126,6 +127,7 @@ class TranscriptionProcessor:
             current_revision=current_revision,
             source_text=source_text,
             translated_text=translated_text,
+            direct_translation=direct_translation,
             is_final=is_final,
         )
         payload = revision_manager.correction_payload(event)
@@ -181,6 +183,7 @@ class TranscriptionProcessor:
             chunk_id=chunk_id,
             source_text=correction.source_text,
             translated_text=corrected_translation,
+            direct_translation=translated_text,
             is_final=True,
             session_id=session_id,
             revision=next_revision,
@@ -197,6 +200,7 @@ class TranscriptionProcessor:
             next_revision,
             correction.source_text,
             corrected_translation,
+            translated_text,
             True,
             correction.reasons,
         )
@@ -234,6 +238,7 @@ class TranscriptionProcessor:
                     chunk_id=current.chunk_id,
                     source_text=correction.source_text,
                     translated_text=correction.translated_text,
+                    direct_translation=current.direct_translation or current.translated_text,
                     is_final=True,
                     session_id=session_id,
                     revision=next_revision,
@@ -251,6 +256,7 @@ class TranscriptionProcessor:
                     next_revision,
                     correction.source_text,
                     correction.translated_text,
+                    corrected_chunk.direct_translation,
                     True,
                     reasons,
                 )
@@ -346,6 +352,7 @@ class TranscriptionProcessor:
             chunk_id=event.chunk_id,
             source_text=event.source_text,
             translated_text=event.translated_text,
+            direct_translation=event.translated_text,
             is_final=event.is_final,
             session_id=session_id,
             revision=event.revision,
@@ -365,6 +372,7 @@ class TranscriptionProcessor:
                     "chunk_id": event.chunk_id,
                     "sourceText": event.source_text,
                     "translatedText": event.translated_text,
+                    "directTranslation": event.translated_text,
                     "isFinal": event.is_final,
                     "revision": event.revision,
                     "byteLength": byte_length,
