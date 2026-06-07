@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api"
     redis_url: str = "redis://localhost:6379/0"
     database_url: str = "sqlite:///./app.db"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
