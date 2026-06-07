@@ -100,6 +100,32 @@ class QwenASRFinishTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class QwenASRMultiTurnTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_translation_waits_for_late_source_transcript(self) -> None:
+        provider = QwenASRProvider()
+        websocket = EventWebSocket(
+            [
+                {"type": "response.created"},
+                {
+                    "type": "response.text.done",
+                    "text": "这是延迟配对的译文。",
+                },
+                {"type": "response.done"},
+                {
+                    "type": "conversation.item.input_audio_transcription.completed",
+                    "transcript": "This source arrived later.",
+                },
+            ]
+        )
+        session = QwenRealtimeSession(websocket=websocket, language="en")
+
+        await provider._read_events(session)
+
+        result = session.results.get_nowait()
+        self.assertEqual(result.text, "This source arrived later.")
+        self.assertEqual(result.translated_text, "这是延迟配对的译文。")
+        self.assertTrue(result.is_final)
+        self.assertTrue(session.results.empty())
+
     async def test_second_sentence_survives_while_first_response_finishes(
         self,
     ) -> None:

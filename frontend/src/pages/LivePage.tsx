@@ -98,6 +98,11 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
       ?? visibleSubtitles.find((item) => item.sourceText.trim() === selectedSource.sourceText.trim())
     : null
   const displayedSubtitle = selectedSourceId ? selectedSubtitle : latestSubtitle
+  const displayedSourceText = displayedSubtitle
+    ? displayedSubtitle.sourceText
+      || sourceTranscript.find((item) => item.id === displayedSubtitle.id)?.sourceText
+      || ''
+    : ''
   const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
   const sourceTotalPages = Math.max(1, Math.ceil(sourceTranscript.length / SOURCE_PAGE_SIZE))
   const currentSourcePage = Math.min(sourcePage, sourceTotalPages)
@@ -407,7 +412,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
           <div className="sci-translation-screen">
             {displayedSubtitle ? (
               <>
-                <p>{displayedSubtitle.sourceText || '正在等待原文...'}</p>
+                <p>{displayedSourceText || '正在同步原文...'}</p>
                 {displayedSubtitle.autoCorrection && displayedSubtitle.directTranslation ? (
                   <div className="sci-direct-translation">
                     <small>原始直译</small>

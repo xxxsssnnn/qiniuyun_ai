@@ -73,6 +73,7 @@ class QwenRealtimeSession:
     active_response_source_text: str = ""
     response_active: bool = False
     translated_text: str = ""
+    pending_final_translation: str = ""
     pending_partial: ASRResult | None = None
     finished: bool = False
     finish_requested: bool = False
@@ -153,7 +154,19 @@ class QwenASRProvider(ASRProvider):
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     text = str(event.get("transcript", "")).strip()
                     if text:
-                        if (
+                        if session.pending_final_translation:
+                            await session.results.put(
+                                ASRResult(
+                                    text=text,
+                                    translated_text=session.pending_final_translation,
+                                    is_final=True,
+                                    confidence=1.0,
+                                    language=session.language,
+                                )
+                            )
+                            session.pending_final_translation = ""
+                            session.pending_partial = None
+                        elif (
                             session.response_active
                             and not session.active_response_source_text
                         ):
@@ -193,7 +206,7 @@ class QwenASRProvider(ASRProvider):
                     source_text = session.active_response_source_text
                     if not source_text and session.completed_source_texts:
                         source_text = session.completed_source_texts.popleft()
-                    if translated:
+                    if translated and source_text:
                         await session.results.put(
                             ASRResult(
                                 text=source_text,
@@ -203,6 +216,8 @@ class QwenASRProvider(ASRProvider):
                                 language=session.language,
                             )
                         )
+                    elif translated:
+                        session.pending_final_translation = translated
                     session.pending_partial = None
                     session.translated_text = ""
                 elif event_type == "response.done":
