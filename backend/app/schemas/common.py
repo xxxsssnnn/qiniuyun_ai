@@ -17,3 +17,7 @@ class TranscriptChunkRead(BaseModel):
     source_text: str
     translated_text: str = ""
     is_final: bool = False
+    session_id: str = "default"
+    revision: int = 0
+    auto_correction: bool = False
+    correction_reasons: list[str] = Field(default_factory=list)

@@ -164,6 +164,7 @@ small,
 }
 
 .nav-tab,
+.session-row,
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -184,7 +185,9 @@ small,
 }
 
 .nav-tab:hover,
-.nav-tab.active {
+.nav-tab.active,
+.session-row:hover,
+.session-row.active {
   background: rgba(94, 234, 212, 0.055);
   border-color: rgba(94, 234, 212, 0.16);
 }
@@ -221,6 +224,26 @@ small,
 
 .nav-text strong {
   font-size: 0.9rem;
+}
+
+.session-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.85rem;
+  color: var(--text);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.session-row span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.session-row small {
+  font-size: 0.74rem;
 }
 
 .sidebar-footer {
@@ -521,6 +544,18 @@ small,
   line-height: 1.13;
   letter-spacing: -0.06em;
   text-shadow: 0 0 34px rgba(96, 165, 250, 0.18);
+}
+
+.sci-correction-badge {
+  width: fit-content;
+  max-width: 880px;
+  margin-top: 1.2rem;
+  padding: 0.5rem 0.75rem;
+  color: #d9fff8;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.24);
+  border-radius: 999px;
+  box-shadow: 0 0 28px rgba(52, 211, 153, 0.1);
 }
 
 .sci-empty-screen {

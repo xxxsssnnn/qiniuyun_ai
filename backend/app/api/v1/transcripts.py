@@ -1,6 +1,8 @@
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Response, WebSocket, WebSocketDisconnect
+
+from app.services.transcript_store import transcript_store
 
 from app.schemas.common import TranscriptChunkCreate, TranscriptChunkRead
 from app.schemas.realtime import StreamTextChunk
@@ -27,28 +29,62 @@ async def create_chunk(payload: TranscriptChunkCreate) -> TranscriptChunkRead:
         source_text=payload.source_text,
         translated_text=payload.translated_text or "",
         is_final=payload.is_final,
+        revision=0,
     )
     buffer.append(chunk)
+    transcript_store.save_chunk(chunk)
     return TranscriptChunkRead.model_validate(chunk)
 
 
 @router.get("/latest", response_model=Optional[TranscriptChunkRead])
-async def latest_chunk() -> Optional[TranscriptChunkRead]:
-    latest = buffer.latest()
+async def latest_chunk(session_id: str | None = None) -> Optional[TranscriptChunkRead]:
+    latest = buffer.latest(session_id) or transcript_store.latest_chunk(session_id)
     return TranscriptChunkRead.model_validate(latest) if latest else None
 
 
 @router.post("/stream", response_model=StreamTextChunk)
 async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
-    buffer.append(
-        TranscriptChunk(
-            chunk_id=payload.chunk_id,
-            source_text=payload.source_text,
-            translated_text=payload.translated_text,
-            is_final=payload.is_final,
-        )
+    chunk = TranscriptChunk(
+        chunk_id=payload.chunk_id,
+        source_text=payload.source_text,
+        translated_text=payload.translated_text,
+        is_final=payload.is_final,
+        session_id=payload.session_id,
+        revision=payload.revision,
     )
+    buffer.append(chunk)
+    transcript_store.save_chunk(chunk)
     return payload
+
+
+@router.get("/sessions")
+async def list_sessions() -> list[dict]:
+    return [summary.__dict__ for summary in transcript_store.list_sessions()]
+
+
+@router.get("/sessions/{session_id}/chunks", response_model=list[TranscriptChunkRead])
+async def list_session_chunks(session_id: str, final_only: bool = True) -> list[TranscriptChunkRead]:
+    chunks = buffer.list_session(session_id, final_only=final_only) or transcript_store.list_chunks(session_id, final_only=final_only)
+    return [TranscriptChunkRead.model_validate(chunk) for chunk in chunks]
+
+
+@router.get("/sessions/{session_id}/export", response_model=None)
+async def export_session(session_id: str, format: str = "json"):
+    normalized_format = format.lower()
+    exported = transcript_store.export_session(session_id, normalized_format)
+    if normalized_format == "srt":
+        return Response(
+            content=str(exported),
+            media_type="application/x-subrip; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{session_id}.srt"'},
+        )
+    if normalized_format == "txt":
+        return Response(
+            content=str(exported),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{session_id}.txt"'},
+        )
+    return exported if isinstance(exported, list) else []
 
 
 @router.websocket("/ws/{session_id}")

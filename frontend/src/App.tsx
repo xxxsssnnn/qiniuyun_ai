@@ -4,6 +4,7 @@ import { CorrectionsPage } from './pages/CorrectionsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GlossaryPage } from './pages/GlossaryPage'
 import { LivePage } from './pages/LivePage'
+import { SessionsPage } from './pages/SessionsPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 const tabs = [
@@ -11,6 +12,7 @@ const tabs = [
   { id: 'settings', label: '模型设置', shortLabel: 'AI', helper: '配置识别与翻译' },
   { id: 'glossary', label: '术语库', shortLabel: 'Term', helper: '维护专有名词' },
   { id: 'corrections', label: '字幕修正', shortLabel: 'Fix', helper: '回看与修订结果' },
+  { id: 'sessions', label: '历史会话', shortLabel: 'Log', helper: '归档、查询与导出' },
   { id: 'dashboard', label: '概览', shortLabel: 'Home', helper: '查看系统状态' },
 ] as const
 
@@ -77,6 +79,7 @@ export function App() {
           {activeTab === 'dashboard' && <DashboardPage />}
           {activeTab === 'glossary' && <GlossaryPage />}
           {activeTab === 'corrections' && <CorrectionsPage />}
+          {activeTab === 'sessions' && <SessionsPage />}
           {activeTab === 'settings' && <SettingsPage />}
         </main>
       </div>

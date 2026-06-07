@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk } from '../services/api'
+import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk, fetchSessionChunks, getSessionExportUrl } from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
@@ -13,6 +13,8 @@ type SubtitleItem = {
   revision: number
   correctionCount: number
   updatedAt: number
+  autoCorrection?: boolean
+  correctionReasons?: string[]
 }
 
 type SourceTranscriptItem = {
@@ -59,6 +61,7 @@ export function LivePage() {
   const canRecord = connectionStatus === 'connected' && audioState !== 'recording' && audioState !== 'starting'
   const visibleSubtitles = subtitles.filter((item) => item.isFinal && (item.sourceText.trim() || item.translatedText.trim()))
   const latestSubtitle = visibleSubtitles[0]
+  const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
 
   useEffect(() => {
     setConnectionStatus('connecting')
@@ -90,7 +93,7 @@ export function LivePage() {
           }
 
           if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
-            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string }
+            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string; autoCorrection?: boolean; reasons?: string[] }
             if (!payload?.chunk_id) return
             setSubtitles((prev) => {
               const existing = prev.find((item) => item.id === payload.chunk_id)
@@ -98,6 +101,8 @@ export function LivePage() {
               const translatedText = payload.translatedText ?? (payload as any).translated_text ?? existing?.translatedText ?? ''
               const isFinal = payload.isFinal ?? (payload as any).is_final ?? existing?.isFinal ?? false
               const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
+              const autoCorrection = payload.autoCorrection ?? existing?.autoCorrection ?? false
+              const correctionReasons = payload.reasons ?? payload.correctionReasons ?? existing?.correctionReasons ?? []
               const providerError = isProviderError(sourceText, translatedText)
 
               if (sourceText.trim() && !providerError) {
@@ -117,8 +122,10 @@ export function LivePage() {
                 translatedText,
                 isFinal,
                 revision,
-                correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : 0,
+                correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : (autoCorrection ? 1 : 0),
                 updatedAt: Date.now(),
+                autoCorrection,
+                correctionReasons,
               }
               if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
                 const spoke = speakText(translatedText, speechLanguageRef.current)
@@ -134,9 +141,22 @@ export function LivePage() {
     })
     setSocket(realtimeSocket)
 
-    void fetchLatestChunk().then((chunk) => {
-      if (!chunk) return
-      setSubtitles([{ id: chunk.chunk_id, sourceText: chunk.sourceText ?? chunk.source_text ?? '', translatedText: chunk.translatedText ?? chunk.translated_text ?? '', isFinal: chunk.isFinal ?? chunk.is_final ?? false, revision: chunk.revision, correctionCount: 0, updatedAt: Date.now() }])
+    void fetchSessionChunks(sessionId).then((chunks) => {
+      if (!chunks.length) return fetchLatestChunk().then((chunk) => (chunk ? [chunk] : []))
+      return chunks
+    }).then((chunks) => {
+      if (!chunks.length) return
+      setSubtitles(chunks.slice(-8).reverse().map((chunk: any) => ({
+        id: chunk.chunk_id,
+        sourceText: chunk.sourceText ?? chunk.source_text ?? '',
+        translatedText: chunk.translatedText ?? chunk.translated_text ?? '',
+        isFinal: chunk.isFinal ?? chunk.is_final ?? false,
+        revision: chunk.revision ?? 0,
+        correctionCount: chunk.auto_correction ? 1 : 0,
+        autoCorrection: chunk.auto_correction ?? false,
+        correctionReasons: chunk.correction_reasons ?? [],
+        updatedAt: Date.now(),
+      })))
     }).catch(() => undefined)
 
     return () => {
@@ -191,6 +211,10 @@ export function LivePage() {
     if (!nextAutoSpeak) stopSpeaking()
   }
 
+  const handleExport = (format: 'txt' | 'srt' | 'json') => {
+    window.open(getSessionExportUrl(sessionId, format), '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <main className="sci-live-page">
       <section className="sci-toolbar">
@@ -204,6 +228,7 @@ export function LivePage() {
         <div className="sci-metrics">
           <span>译文 {visibleSubtitles.length}</span>
           <span>原文 {sourceTranscript.length}</span>
+          <span>纠错 {totalCorrections}</span>
           <span>术语 {glossary.length}</span>
         </div>
         <div className="sci-actions">
@@ -211,6 +236,8 @@ export function LivePage() {
           <button className="secondary-button" onClick={handleStopAudio} disabled={audioState !== 'recording'}>停止</button>
           <button className="secondary-button" onClick={handleStartDemo} disabled={connectionStatus !== 'connected'}>演示</button>
           <button className="secondary-button" onClick={handleToggleAutoSpeak}>{autoSpeak ? '播报 ON' : '播报 OFF'}</button>
+          <button className="secondary-button" onClick={() => handleExport('txt')} disabled={!visibleSubtitles.length}>导出 TXT</button>
+          <button className="secondary-button" onClick={() => handleExport('srt')} disabled={!visibleSubtitles.length}>导出 SRT</button>
         </div>
       </section>
 
@@ -225,6 +252,11 @@ export function LivePage() {
               <>
                 <p>{latestSubtitle.sourceText || '正在等待原文...'}</p>
                 <h2>{latestSubtitle.translatedText || '译文生成中...'}</h2>
+                {latestSubtitle.autoCorrection ? (
+                  <small className="sci-correction-badge">
+                    AI 已自动纠错{latestSubtitle.correctionReasons?.length ? `：${latestSubtitle.correctionReasons.join('、')}` : ''}
+                  </small>
+                ) : null}
               </>
             ) : (
               <div className="sci-empty-screen">
