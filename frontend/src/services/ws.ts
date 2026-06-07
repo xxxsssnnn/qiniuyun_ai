@@ -1,5 +1,5 @@
 export type RealtimeMessage = {
-  type: 'connected' | 'chunk' | 'translated' | 'revision' | 'correction' | 'status' | 'error' | 'audio'
+  type: 'connected' | 'chunk' | 'translated' | 'revision' | 'correction' | 'source_partial' | 'source_final' | 'status' | 'error' | 'audio'
   session_id: string
   payload?: unknown
 }

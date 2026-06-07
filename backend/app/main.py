@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router as api_router
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.models.transcript import TranscriptRecord  # noqa: F401
 from app.services.asr_factory import get_asr_provider
 from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager

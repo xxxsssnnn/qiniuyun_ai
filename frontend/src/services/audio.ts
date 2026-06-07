@@ -33,7 +33,7 @@ export async function startAudioCapture(onChunk: (chunk: ArrayBuffer) => void) {
       channelCount: 1,
       processorOptions: {
         targetSampleRate: 16000,
-        chunkSamples: 1600,
+        chunkSamples: 1280,
       },
     })
     silentGain = audioContext.createGain()

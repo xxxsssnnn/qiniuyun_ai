@@ -14,12 +14,21 @@ export type StreamTextChunk = {
   start_ms?: number | null
   end_ms?: number | null
   revision: number
+  auto_correction?: boolean
+  correction_reasons?: string[]
 }
 
 export type GlossaryEntry = {
   source: string
   target: string
   note?: string
+}
+
+export type TranscriptSessionSummary = {
+  session_id: string
+  chunk_count: number
+  correction_count: number
+  latest_updated_at: string
 }
 
 export type AppSettings = {
@@ -94,4 +103,20 @@ export async function testQwenConnection() {
 export async function fetchLatestChunk() {
   const response = await fetch(`${API_BASE}/transcripts/latest`)
   return response.json() as Promise<any>
+}
+
+export async function fetchTranscriptSessions() {
+  const response = await fetch(`${API_BASE}/transcripts/sessions`)
+  if (!response.ok) throw new Error(`Failed to fetch transcript sessions: ${response.status}`)
+  return response.json() as Promise<TranscriptSessionSummary[]>
+}
+
+export async function fetchSessionChunks(sessionId: string) {
+  const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks?final_only=true`)
+  if (!response.ok) throw new Error(`Failed to fetch session chunks: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk[]>
+}
+
+export function getSessionExportUrl(sessionId: string, format: 'json' | 'txt' | 'srt') {
+  return `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/export?format=${format}`
 }
