@@ -95,10 +95,7 @@ class AutoCorrectionEngine:
             return translated_text
 
         corrected = translated_text
-        lowered_source = source_text.lower()
-        for entry in glossary_manager.list_entries():
-            if not entry.source or entry.source not in lowered_source:
-                continue
+        for entry in glossary_manager.matching_entries(source_text):
             if entry.target and entry.target not in corrected:
                 corrected = f"{corrected}（术语：{entry.source}={entry.target}）"
         return corrected

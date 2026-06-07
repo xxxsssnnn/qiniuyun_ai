@@ -13,6 +13,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from app.services.asr import ASRProvider, ASRResult
+from app.services.glossary import glossary_manager
 
 
 LANGUAGE_NAMES = {
@@ -268,6 +269,12 @@ class QwenASRProvider(ASRProvider):
             self.target_language,
             self.target_language,
         )
+        glossary_text = glossary_manager.format_prompt()
+        glossary_instruction = (
+            f"严格使用以下术语映射：\n{glossary_text}\n"
+            if glossary_text
+            else ""
+        )
         await websocket.send(
             json.dumps(
                 {
@@ -284,6 +291,7 @@ class QwenASRProvider(ASRProvider):
                             f"你是实时同声传译引擎。识别用户语音后，将其忠实、完整、简洁地翻译成{target_language_name}。"
                             f"只输出{target_language_name}译文，不回答问题，不解释，不添加标题、引号或额外内容。"
                             "保留人名、产品名、数字和专业术语的准确含义。"
+                            f"{glossary_instruction}"
                         ),
                         "temperature": 0.0,
                         "turn_detection": self.turn_detection_config(),

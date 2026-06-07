@@ -43,9 +43,8 @@ class QwenSubtitleCorrectionService:
 
         review_chunks = chunks[-self.max_context_chunks :]
         allowed_ids = {chunk.chunk_id for chunk in review_chunks}
-        glossary_text = "\n".join(
-            f"- {entry.source} => {entry.target}"
-            for entry in glossary_manager.list_entries()[:30]
+        glossary_text = glossary_manager.format_prompt(
+            "\n".join(chunk.source_text for chunk in review_chunks)
         ) or "无"
         subtitle_text = "\n".join(
             json.dumps(

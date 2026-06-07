@@ -47,6 +47,23 @@ export type AppSettings = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
+async function parseApiResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  if (response.ok) return response.json() as Promise<T>
+
+  let message = fallbackMessage
+  try {
+    const payload = await response.json() as { detail?: string | Array<{ msg?: string }> }
+    if (typeof payload.detail === 'string') {
+      message = payload.detail
+    } else if (Array.isArray(payload.detail)) {
+      message = payload.detail.map((item) => item.msg).filter(Boolean).join('；') || message
+    }
+  } catch {
+    // Keep the user-facing fallback when the server did not return JSON.
+  }
+  throw new Error(message)
+}
+
 export async function fetchHealth() {
   const response = await fetch(`${API_BASE}/health`)
   return response.json() as Promise<{ status: string }>
@@ -54,7 +71,7 @@ export async function fetchHealth() {
 
 export async function fetchGlossary() {
   const response = await fetch(`${API_BASE}/glossary`)
-  return response.json() as Promise<GlossaryEntry[]>
+  return parseApiResponse<GlossaryEntry[]>(response, '读取术语库失败')
 }
 
 export async function addGlossaryEntry(entry: GlossaryEntry) {
@@ -63,7 +80,7 @@ export async function addGlossaryEntry(entry: GlossaryEntry) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entry),
   })
-  return response.json() as Promise<GlossaryEntry>
+  return parseApiResponse<GlossaryEntry>(response, '添加术语失败')
 }
 
 export async function updateGlossaryEntry(source: string, entry: GlossaryEntry) {
@@ -72,14 +89,14 @@ export async function updateGlossaryEntry(source: string, entry: GlossaryEntry) 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entry),
   })
-  return response.json() as Promise<GlossaryEntry>
+  return parseApiResponse<GlossaryEntry>(response, '更新术语失败')
 }
 
 export async function deleteGlossaryEntry(source: string) {
   const response = await fetch(`${API_BASE}/glossary/${encodeURIComponent(source)}`, {
     method: 'DELETE',
   })
-  return response.json() as Promise<{ ok: boolean }>
+  return parseApiResponse<{ ok: boolean }>(response, '删除术语失败')
 }
 
 export async function fetchSettings() {
