@@ -24,11 +24,7 @@ class OpenAITranslationProvider(TranslationProvider):
         if not self.api_key or self._client is None:
             return TranslationResult(source_text=text, translated_text=f"[OpenAI unavailable] {text}", is_final=False)
 
-        glossary_entries = glossary_manager.list_entries()
-        glossary_text = "\n".join(
-            f"- {entry.source} => {entry.target}{f'（{entry.note}）' if entry.note else ''}"
-            for entry in glossary_entries[:30]
-        ) or "无"
+        glossary_text = glossary_manager.format_prompt(text) or "无"
         context_items = glossary_manager.get_context(session_id)[-6:] if session_id else []
         context_text = "\n".join(f"- {item}" for item in context_items) or "无"
 

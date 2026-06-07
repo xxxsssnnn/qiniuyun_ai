@@ -11,6 +11,7 @@ class TranscriptRecord(Base):
     chunk_id = Column(String(128), nullable=False, unique=True, index=True)
     source_text = Column(Text, nullable=False, default="")
     translated_text = Column(Text, nullable=False, default="")
+    direct_translation = Column(Text, nullable=False, default="")
     is_final = Column(Boolean, nullable=False, default=False)
     revision = Column(Integer, nullable=False, default=0)
     auto_correction = Column(Boolean, nullable=False, default=False)

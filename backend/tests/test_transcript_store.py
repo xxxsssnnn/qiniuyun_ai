@@ -71,6 +71,46 @@ class TranscriptStoreSessionTestCase(unittest.TestCase):
             ["Hello B"],
         )
 
+    def test_each_subtitle_revision_is_preserved(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        test_session_local = sessionmaker(bind=engine)
+        store = TranscriptStore()
+
+        with patch(
+            "app.services.transcript_store.SessionLocal",
+            test_session_local,
+        ):
+            store.save_chunk(
+                TranscriptChunk(
+                    chunk_id="chunk-1",
+                    session_id="session-a",
+                    source_text="We use cash.",
+                    translated_text="我们使用现金。",
+                    is_final=True,
+                    revision=1,
+                )
+            )
+            store.save_chunk(
+                TranscriptChunk(
+                    chunk_id="chunk-1",
+                    session_id="session-a",
+                    source_text="We use cache.",
+                    translated_text="我们使用缓存。",
+                    direct_translation="我们使用现金。",
+                    is_final=True,
+                    revision=2,
+                    auto_correction=True,
+                    correction_reasons=["千问上下文复核"],
+                )
+            )
+            history = store.list_revisions("session-a", "chunk-1")
+
+        self.assertEqual([item.revision for item in history], [2, 1])
+        self.assertEqual(history[0].source_text, "We use cache.")
+        self.assertEqual(history[0].direct_translation, "我们使用现金。")
+        self.assertEqual(history[1].source_text, "We use cash.")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ export type StreamTextChunk = {
   session_id: string
   source_text: string
   translated_text: string
+  direct_translation: string
   is_final: boolean
   start_ms?: number | null
   end_ms?: number | null
@@ -46,6 +47,23 @@ export type AppSettings = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
+async function parseApiResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  if (response.ok) return response.json() as Promise<T>
+
+  let message = fallbackMessage
+  try {
+    const payload = await response.json() as { detail?: string | Array<{ msg?: string }> }
+    if (typeof payload.detail === 'string') {
+      message = payload.detail
+    } else if (Array.isArray(payload.detail)) {
+      message = payload.detail.map((item) => item.msg).filter(Boolean).join('；') || message
+    }
+  } catch {
+    // Keep the user-facing fallback when the server did not return JSON.
+  }
+  throw new Error(message)
+}
+
 export async function fetchHealth() {
   const response = await fetch(`${API_BASE}/health`)
   return response.json() as Promise<{ status: string }>
@@ -53,7 +71,7 @@ export async function fetchHealth() {
 
 export async function fetchGlossary() {
   const response = await fetch(`${API_BASE}/glossary`)
-  return response.json() as Promise<GlossaryEntry[]>
+  return parseApiResponse<GlossaryEntry[]>(response, '读取术语库失败')
 }
 
 export async function addGlossaryEntry(entry: GlossaryEntry) {
@@ -62,7 +80,7 @@ export async function addGlossaryEntry(entry: GlossaryEntry) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entry),
   })
-  return response.json() as Promise<GlossaryEntry>
+  return parseApiResponse<GlossaryEntry>(response, '添加术语失败')
 }
 
 export async function updateGlossaryEntry(source: string, entry: GlossaryEntry) {
@@ -71,14 +89,14 @@ export async function updateGlossaryEntry(source: string, entry: GlossaryEntry) 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entry),
   })
-  return response.json() as Promise<GlossaryEntry>
+  return parseApiResponse<GlossaryEntry>(response, '更新术语失败')
 }
 
 export async function deleteGlossaryEntry(source: string) {
   const response = await fetch(`${API_BASE}/glossary/${encodeURIComponent(source)}`, {
     method: 'DELETE',
   })
-  return response.json() as Promise<{ ok: boolean }>
+  return parseApiResponse<{ ok: boolean }>(response, '删除术语失败')
 }
 
 export async function fetchSettings() {
@@ -138,6 +156,41 @@ export async function fetchSessionChunks(sessionId: string) {
   const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks?final_only=true`)
   if (!response.ok) throw new Error(`Failed to fetch session chunks: ${response.status}`)
   return response.json() as Promise<StreamTextChunk[]>
+}
+
+export async function fetchSessionRevisions(sessionId: string, chunkId?: string) {
+  const query = chunkId ? `?chunk_id=${encodeURIComponent(chunkId)}` : ''
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/revisions${query}`,
+  )
+  if (!response.ok) throw new Error(`Failed to fetch revisions: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk[]>
+}
+
+export async function rollbackTranscriptChunk(
+  sessionId: string,
+  chunkId: string,
+  revision: number,
+) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/rollback`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision }),
+    },
+  )
+  if (!response.ok) throw new Error(`Failed to rollback revision: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk>
+}
+
+export async function restoreDirectTranslation(sessionId: string, chunkId: string) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/restore-direct`,
+    { method: 'POST' },
+  )
+  if (!response.ok) throw new Error(`Failed to restore direct translation: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk>
 }
 
 export function getSessionExportUrl(sessionId: string, format: 'json' | 'txt' | 'srt') {

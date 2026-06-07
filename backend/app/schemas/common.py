@@ -16,6 +16,7 @@ class TranscriptChunkRead(BaseModel):
     chunk_id: str
     source_text: str
     translated_text: str = ""
+    direct_translation: str = ""
     is_final: bool = False
     session_id: str = "default"
     revision: int = 0

@@ -27,7 +27,7 @@ class DeepSeekTranslationProvider(TranslationProvider):
 
         context = glossary_manager.get_context(session_id) if session_id else []
         context_text = '\n'.join(context[-6:]) if context else '无额外上下文'
-        glossary_hint = '\n'.join([f'{item.source} -> {item.target}' for item in glossary_manager.list_entries()[:10]]) or '无术语表'
+        glossary_hint = glossary_manager.format_prompt(text) or '无术语表'
         prompt = (
             f'请将下面{source_language}内容翻译成{target_language}，要求：\n'
             f'1. 适合字幕阅读，尽量简洁自然\n'
