@@ -1,8 +1,9 @@
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 from app.services.asr import ASRResult, MockASRProvider
-from app.services.streaming import TranscriptBuffer
+from app.services.qwen_correction import QwenCorrection
+from app.services.streaming import TranscriptBuffer, TranscriptChunk
 from app.services.transcription_processor import TranscriptionProcessor
 from app.services.translation import MockTranslationProvider
 
@@ -87,6 +88,78 @@ class TranscriptionProcessorTranslationTestCase(unittest.IsolatedAsyncioTestCase
             if call.args[1]["type"] == "revision"
         )
         self.assertNotEqual(first_chunk_id, second_chunk_id)
+
+    async def test_qwen_context_review_revises_previous_subtitle(self) -> None:
+        manager = AsyncMock()
+        buffer = TranscriptBuffer()
+        buffer.append(
+            TranscriptChunk(
+                chunk_id="chunk-1",
+                session_id="session-1",
+                source_text="We use cash.",
+                translated_text="我们使用现金。",
+                is_final=True,
+                revision=1,
+            )
+        )
+        buffer.append(
+            TranscriptChunk(
+                chunk_id="chunk-2",
+                session_id="session-1",
+                source_text="The cache expires after one minute.",
+                translated_text="缓存会在一分钟后过期。",
+                is_final=True,
+                revision=1,
+            )
+        )
+        processor = TranscriptionProcessor(
+            manager,
+            buffer,
+            MockASRProvider(),
+            MockTranslationProvider(),
+        )
+
+        with (
+            patch(
+                "app.services.qwen_correction.QwenSubtitleCorrectionService.available",
+                new_callable=PropertyMock,
+                return_value=True,
+            ),
+            patch(
+                "app.services.transcription_processor.qwen_correction_service.review",
+                new=AsyncMock(
+                    return_value=[
+                        QwenCorrection(
+                            chunk_id="chunk-1",
+                            source_text="We use cache.",
+                            translated_text="我们使用缓存。",
+                            reason="后文表明这里指缓存而非现金",
+                        )
+                    ]
+                ),
+            ),
+            patch(
+                "app.services.transcription_processor.transcript_store.save_chunk"
+            ) as save_chunk,
+        ):
+            await processor._review_context("session-1")
+
+        corrected = buffer.list_session("session-1")[0]
+        self.assertEqual(corrected.source_text, "We use cache.")
+        self.assertEqual(corrected.translated_text, "我们使用缓存。")
+        self.assertEqual(corrected.revision, 2)
+        self.assertTrue(corrected.auto_correction)
+        save_chunk.assert_called_once()
+        correction_messages = [
+            call.args[1]
+            for call in manager.broadcast.await_args_list
+            if call.args[1]["type"] == "correction"
+        ]
+        self.assertEqual(len(correction_messages), 1)
+        self.assertEqual(
+            correction_messages[0]["payload"]["chunk_id"],
+            "chunk-1",
+        )
 
 
 if __name__ == "__main__":

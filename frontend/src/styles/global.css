@@ -813,6 +813,14 @@ small,
   gap: 1rem;
 }
 
+.subtitle-correction-note {
+  display: block;
+  margin-top: 8px;
+  color: #6f7d8f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .panel h2,
 .panel h3,
 .page-hero h2,

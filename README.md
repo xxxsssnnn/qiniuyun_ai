@@ -176,6 +176,10 @@ npm run dev
 - `WHISPER_COMPUTE_TYPE`：Whisper 计算类型。
 - `AUTO_CORRECTION_ENABLED`：是否启用自动纠错，默认 `true`。
 - `AUTO_CORRECTION_MIN_CONFIDENCE`：低置信度二次校正阈值，默认 `0.68`。
+- `QWEN_CONTEXT_CORRECTION_ENABLED`：是否启用千问上下文字幕复核，默认 `true`。
+- `QWEN_CORRECTION_MODEL`：字幕复核模型，默认 `qwen3.5-flash`。
+- `QWEN_CORRECTION_CONTEXT_CHUNKS`：每次复核最近字幕数量，默认 `5`。
+- `QWEN_CORRECTION_TIMEOUT_SECONDS`：字幕复核请求超时时间，默认 `8` 秒。
 - `MIN_TRANSLATE_CHARS`：触发翻译的最小缓冲字符数。
 - `MAX_TRANSLATE_BUFFER_SECONDS`：最大缓冲时间。
 - `TRANSLATION_TIMEOUT_SECONDS`：翻译超时时间。

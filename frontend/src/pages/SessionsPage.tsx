@@ -88,12 +88,16 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
                   <p className="subtle">该会话暂无最终字幕。</p>
                 ) : chunks.map((chunk) => (
                   <div key={chunk.chunk_id} className="subtitle-item">
-                    <div className="subtitle-topline">
-                      <span>{chunk.chunk_id}</span>
-                      <small>revision {chunk.revision ?? 0}</small>
-                    </div>
                     <p className="source">{chunk.source_text}</p>
                     <p className="translation">{chunk.translated_text}</p>
+                    {chunk.auto_correction ? (
+                      <small className="subtitle-correction-note">
+                        已自动修正
+                        {chunk.correction_reasons?.length
+                          ? `：${chunk.correction_reasons.join('；')}`
+                          : ''}
+                      </small>
+                    ) : null}
                   </div>
                 ))}
               </div>

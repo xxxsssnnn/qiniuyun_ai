@@ -140,6 +140,32 @@ export async function fetchSessionChunks(sessionId: string) {
   return response.json() as Promise<StreamTextChunk[]>
 }
 
+export async function fetchSessionRevisions(sessionId: string, chunkId?: string) {
+  const query = chunkId ? `?chunk_id=${encodeURIComponent(chunkId)}` : ''
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/revisions${query}`,
+  )
+  if (!response.ok) throw new Error(`Failed to fetch revisions: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk[]>
+}
+
+export async function rollbackTranscriptChunk(
+  sessionId: string,
+  chunkId: string,
+  revision: number,
+) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/rollback`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision }),
+    },
+  )
+  if (!response.ok) throw new Error(`Failed to rollback revision: ${response.status}`)
+  return response.json() as Promise<StreamTextChunk>
+}
+
 export function getSessionExportUrl(sessionId: string, format: 'json' | 'txt' | 'srt') {
   return `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/export?format=${format}`
 }

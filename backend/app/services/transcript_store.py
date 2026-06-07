@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.transcript import TranscriptRecord
+from app.models.transcript_revision import TranscriptRevision
 from app.models.transcript_session import TranscriptSession
 from app.services.streaming import TranscriptChunk
 
@@ -27,8 +28,34 @@ class TranscriptStore:
     def save_chunk(self, chunk: TranscriptChunk) -> None:
         with SessionLocal() as db:
             self._ensure_session(db, chunk.session_id)
+            self._save_revision(db, chunk)
             self._upsert(db, chunk)
             db.commit()
+
+    def _save_revision(self, db: Session, chunk: TranscriptChunk) -> None:
+        existing = db.execute(
+            select(TranscriptRevision).where(
+                TranscriptRevision.chunk_id == chunk.chunk_id,
+                TranscriptRevision.revision == chunk.revision,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
+        db.add(
+            TranscriptRevision(
+                session_id=chunk.session_id,
+                chunk_id=chunk.chunk_id,
+                source_text=chunk.source_text,
+                translated_text=chunk.translated_text,
+                is_final=chunk.is_final,
+                revision=chunk.revision,
+                auto_correction=chunk.auto_correction,
+                correction_reasons=json.dumps(
+                    chunk.correction_reasons,
+                    ensure_ascii=False,
+                ),
+            )
+        )
 
     def create_session(self, session_id: str, name: str) -> SessionSummary:
         normalized_name = name.strip() or "未命名会话"
@@ -130,6 +157,26 @@ class TranscriptStore:
             records = db.execute(statement.order_by(TranscriptRecord.id.asc())).scalars().all()
             return [self._to_chunk(record) for record in records]
 
+    def list_revisions(
+        self,
+        session_id: str,
+        chunk_id: str | None = None,
+    ) -> list[TranscriptChunk]:
+        with SessionLocal() as db:
+            statement = select(TranscriptRevision).where(
+                TranscriptRevision.session_id == session_id
+            )
+            if chunk_id:
+                statement = statement.where(
+                    TranscriptRevision.chunk_id == chunk_id
+                )
+            records = db.execute(
+                statement.order_by(
+                    TranscriptRevision.id.desc(),
+                )
+            ).scalars().all()
+            return [self._revision_to_chunk(record) for record in records]
+
     def latest_chunk(self, session_id: str | None = None) -> TranscriptChunk | None:
         with SessionLocal() as db:
             statement = select(TranscriptRecord)
@@ -198,6 +245,22 @@ class TranscriptStore:
         return [asdict(chunk) for chunk in chunks]
 
     def _to_chunk(self, record: TranscriptRecord) -> TranscriptChunk:
+        try:
+            reasons = json.loads(record.correction_reasons or "[]")
+        except json.JSONDecodeError:
+            reasons = []
+        return TranscriptChunk(
+            chunk_id=record.chunk_id,
+            source_text=record.source_text,
+            translated_text=record.translated_text,
+            is_final=record.is_final,
+            session_id=record.session_id,
+            revision=record.revision,
+            auto_correction=record.auto_correction,
+            correction_reasons=reasons if isinstance(reasons, list) else [],
+        )
+
+    def _revision_to_chunk(self, record: TranscriptRevision) -> TranscriptChunk:
         try:
             reasons = json.loads(record.correction_reasons or "[]")
         except json.JSONDecodeError:
