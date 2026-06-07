@@ -7,6 +7,19 @@ class Pcm16Processor extends AudioWorkletProcessor {
     this.pendingSamples = new Float32Array(0)
     this.pcmChunk = new Int16Array(this.chunkSamples)
     this.pcmChunkOffset = 0
+    this.port.onmessage = (event) => {
+      if (event.data?.type === 'flush') this.flush()
+    }
+  }
+
+  flush() {
+    if (this.pcmChunkOffset > 0) {
+      const tail = this.pcmChunk.slice(0, this.pcmChunkOffset)
+      this.port.postMessage(tail.buffer, [tail.buffer])
+      this.pcmChunk = new Int16Array(this.chunkSamples)
+      this.pcmChunkOffset = 0
+    }
+    this.port.postMessage({ type: 'flushed' })
   }
 
   process(inputs, outputs) {

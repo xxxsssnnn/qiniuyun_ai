@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Any
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 
 class ConnectionManager:
@@ -23,4 +23,7 @@ class ConnectionManager:
     async def broadcast(self, session_id: str, message: dict[str, Any]) -> None:
         connections = self._connections.get(session_id, set())
         for websocket in list(connections):
-            await websocket.send_json(message)
+            try:
+                await websocket.send_json(message)
+            except (WebSocketDisconnect, RuntimeError, OSError):
+                self.disconnect(session_id, websocket)

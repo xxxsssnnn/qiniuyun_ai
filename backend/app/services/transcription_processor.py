@@ -239,7 +239,11 @@ class TranscriptionProcessor:
             return
 
         translation_source_text = ""
-        if source_text:
+        if source_text and model_translated_text:
+            glossary_manager.remember_context(session_id, source_text)
+            self._active_chunk_ids.pop(session_id, None)
+            translation_source_text = source_text
+        elif source_text:
             glossary_manager.remember_context(session_id, source_text)
             buffered_text = self._append_sentence_buffer(session_id, source_text)
             self._active_chunk_ids.pop(session_id, None)
@@ -252,7 +256,9 @@ class TranscriptionProcessor:
         else:
             translation_source_text = ""
 
-        if translation_source_text:
+        if model_translated_text:
+            translated_text = model_translated_text
+        elif translation_source_text:
             translated_text = await self._translate_text(
                 session_id,
                 translation_source_text,
@@ -260,9 +266,6 @@ class TranscriptionProcessor:
                 model_translated_text,
             )
         else:
-            translated_text = model_translated_text
-
-        if not translated_text and model_translated_text:
             translated_text = model_translated_text
 
         if self.tts_provider and translated_text:
