@@ -3,7 +3,7 @@
 一个面向英语及其他外语演讲、技术分享、国际会议和网课场景的实时 AI 同声传译助手。
 
 系统通过 AI 能力将单向音频流实时识别、翻译成中文，并以字幕或语音形式呈现，帮助用户降低语言门槛，提升信息获取效率。2.0 版本在原有实时传译原型基础上，进一步增强了自动纠错、会话持久化、字幕导出和历史归档能力，更接近可落地的商用产品形态。
-演示视频链接：https://xsnb11.oss-cn-beijing.aliyuncs.com/81690ecda06ac7420af5477d8e320d17.mp4
+演示视频链接：[https://xsnb11.oss-cn-beijing.aliyuncs.com/81690ecda06ac7420af5477d8e320d17.mp4](https://www.bilibili.com/video/BV1orE86hEhM/?vd_source=e9dd22690147ef1907080afc5e01782d)
 
 ## 2.0 版本更新
 
