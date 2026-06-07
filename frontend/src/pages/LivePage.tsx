@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk, fetchSessionChunks, getSessionExportUrl } from '../services/api'
+import {
+  createTranscriptSession,
+  fetchGlossary,
+  fetchSettings,
+  type GlossaryEntry,
+  fetchLatestChunk,
+  fetchSessionChunks,
+  fetchTranscriptSessions,
+  getSessionExportUrl,
+  type TranscriptSessionSummary,
+} from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
@@ -49,14 +59,21 @@ function getProviderErrorMessage(text: string) {
   return '翻译服务暂时异常，已保留最新原文'
 }
 
-export function LivePage() {
-  const sessionId = useMemo(() => 'demo-session', [])
+type LivePageProps = {
+  sessionId: string
+  onSessionChange: (sessionId: string) => void
+}
+
+export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
   const [audioState, setAudioState] = useState<AudioCaptureState>('idle')
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<TranscriptSessionSummary[]>([])
+  const [newSessionName, setNewSessionName] = useState('')
+  const [creatingSession, setCreatingSession] = useState(false)
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => Promise<void> } | null>(null)
   const audioSessionRef = useRef<{ stop: () => Promise<void> } | null>(null)
@@ -79,6 +96,26 @@ export function LivePage() {
   const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
 
   useEffect(() => {
+    void fetchTranscriptSessions()
+      .then(async (items) => {
+        setSessions(items)
+        if (sessionId) return
+        if (items.length) {
+          onSessionChange(items[0].session_id)
+          return
+        }
+        const created = await createTranscriptSession('我的第一次传译')
+        setSessions([created])
+        onSessionChange(created.session_id)
+      })
+      .catch(() => undefined)
+  }, [sessionId, onSessionChange])
+
+  useEffect(() => {
+    if (!sessionId) return
+    setSubtitles([])
+    setSourceTranscript([])
+    setSelectedSourceId(null)
     setConnectionStatus('connecting')
     const realtimeSocket = createRealtimeSocketWithFallback(sessionId, {
       onOpen: () => setConnectionStatus('connected'),
@@ -158,7 +195,7 @@ export function LivePage() {
     setSocket(realtimeSocket)
 
     void fetchSessionChunks(sessionId).then((chunks) => {
-      if (!chunks.length) return fetchLatestChunk().then((chunk) => (chunk ? [chunk] : []))
+      if (!chunks.length) return fetchLatestChunk(sessionId).then((chunk) => (chunk ? [chunk] : []))
       return chunks
     }).then((chunks) => {
       if (!chunks.length) return
@@ -200,6 +237,21 @@ export function LivePage() {
   const handleStartDemo = () => {
     if (!socket || socket.current.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'start_demo' }))
+  }
+
+  const handleCreateSession = async () => {
+    if (creatingSession || audioState === 'recording') return
+    setCreatingSession(true)
+    try {
+      const created = await createTranscriptSession(
+        newSessionName.trim() || `新会话 ${sessions.length + 1}`,
+      )
+      setSessions((current) => [created, ...current])
+      setNewSessionName('')
+      onSessionChange(created.session_id)
+    } finally {
+      setCreatingSession(false)
+    }
   }
 
   const handleStartAudio = async () => {
@@ -261,6 +313,45 @@ export function LivePage() {
           <button className="secondary-button" onClick={() => handleExport('txt')} disabled={!visibleSubtitles.length}>导出 TXT</button>
           <button className="secondary-button" onClick={() => handleExport('srt')} disabled={!visibleSubtitles.length}>导出 SRT</button>
         </div>
+      </section>
+
+      <section className="sci-session-bar" aria-label="实时传译会话">
+        <label>
+          <span>当前会话</span>
+          <select
+            value={sessionId}
+            onChange={(event) => onSessionChange(event.target.value)}
+            disabled={audioState === 'recording' || creatingSession}
+          >
+            {sessions.map((session) => (
+              <option key={session.session_id} value={session.session_id}>
+                {session.name || session.session_id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="sci-session-name">
+          <span>新会话名称</span>
+          <input
+            value={newSessionName}
+            onChange={(event) => setNewSessionName(event.target.value)}
+            placeholder="例如：AI 技术大会"
+            maxLength={160}
+            disabled={audioState === 'recording' || creatingSession}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void handleCreateSession()
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => void handleCreateSession()}
+          disabled={audioState === 'recording' || creatingSession}
+        >
+          {creatingSession ? '创建中...' : '新建会话'}
+        </button>
+        <small>每个会话的字幕、纠错与导出记录均独立保存。</small>
       </section>
 
       <section className="sci-stage-grid">

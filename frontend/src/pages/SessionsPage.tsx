@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react'
 
 import { fetchSessionChunks, fetchTranscriptSessions, getSessionExportUrl, type StreamTextChunk, type TranscriptSessionSummary } from '../services/api'
 
-export function SessionsPage() {
+type SessionsPageProps = {
+  onOpenSession: (sessionId: string) => void
+}
+
+export function SessionsPage({ onOpenSession }: SessionsPageProps) {
   const [sessions, setSessions] = useState<TranscriptSessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [chunks, setChunks] = useState<StreamTextChunk[]>([])
@@ -57,7 +61,7 @@ export function SessionsPage() {
                   className={session.session_id === selectedSessionId ? 'session-row active' : 'session-row'}
                   onClick={() => setSelectedSessionId(session.session_id)}
                 >
-                  <strong>{session.session_id}</strong>
+                  <strong>{session.name || session.session_id}</strong>
                   <span>{session.chunk_count} 条字幕 · {session.correction_count} 次纠错</span>
                   <small>{session.latest_updated_at ? new Date(session.latest_updated_at).toLocaleString() : '无更新时间'}</small>
                 </button>
@@ -74,6 +78,7 @@ export function SessionsPage() {
           {selectedSession ? (
             <>
               <div className="hero-actions">
+                <button className="primary-button" onClick={() => onOpenSession(selectedSession.session_id)}>在实时传译中打开</button>
                 <a className="secondary-button" href={getSessionExportUrl(selectedSession.session_id, 'txt')} target="_blank" rel="noreferrer">导出 TXT</a>
                 <a className="secondary-button" href={getSessionExportUrl(selectedSession.session_id, 'srt')} target="_blank" rel="noreferrer">导出 SRT</a>
                 <a className="secondary-button" href={getSessionExportUrl(selectedSession.session_id, 'json')} target="_blank" rel="noreferrer">导出 JSON</a>

@@ -26,8 +26,10 @@ export type GlossaryEntry = {
 
 export type TranscriptSessionSummary = {
   session_id: string
+  name: string
   chunk_count: number
   correction_count: number
+  created_at: string
   latest_updated_at: string
 }
 
@@ -100,8 +102,9 @@ export async function testQwenConnection() {
   return response.json() as Promise<{ ok: boolean; message: string }>
 }
 
-export async function fetchLatestChunk() {
-  const response = await fetch(`${API_BASE}/transcripts/latest`)
+export async function fetchLatestChunk(sessionId?: string) {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  const response = await fetch(`${API_BASE}/transcripts/latest${query}`)
   return response.json() as Promise<any>
 }
 
@@ -109,6 +112,26 @@ export async function fetchTranscriptSessions() {
   const response = await fetch(`${API_BASE}/transcripts/sessions`)
   if (!response.ok) throw new Error(`Failed to fetch transcript sessions: ${response.status}`)
   return response.json() as Promise<TranscriptSessionSummary[]>
+}
+
+export async function createTranscriptSession(name: string) {
+  const response = await fetch(`${API_BASE}/transcripts/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!response.ok) throw new Error(`Failed to create session: ${response.status}`)
+  return response.json() as Promise<TranscriptSessionSummary>
+}
+
+export async function renameTranscriptSession(sessionId: string, name: string) {
+  const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!response.ok) throw new Error(`Failed to rename session: ${response.status}`)
+  return response.json() as Promise<TranscriptSessionSummary>
 }
 
 export async function fetchSessionChunks(sessionId: string) {
