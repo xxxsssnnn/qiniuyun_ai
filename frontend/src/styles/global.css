@@ -810,6 +810,14 @@ small,
   grid-template-columns: minmax(260px, 0.65fr) minmax(0, 1.7fr);
 }
 
+.corrections-grid {
+  grid-template-columns: minmax(0, 2.4fr) minmax(210px, 0.6fr);
+}
+
+.correction-help-panel {
+  align-self: start;
+}
+
 .panel-header,
 .glossary-item,
 .subtitle-topline {
@@ -959,7 +967,8 @@ code {
 
   .sci-stage-grid,
   .content-grid,
-  .sessions-grid {
+  .sessions-grid,
+  .corrections-grid {
     grid-template-columns: 1fr;
   }
 

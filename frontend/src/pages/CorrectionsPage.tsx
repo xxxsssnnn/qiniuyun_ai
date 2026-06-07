@@ -66,15 +66,18 @@ export function CorrectionsPage() {
         <p>集中查看规则纠错和千问上下文复核产生的字幕修正记录。</p>
       </section>
 
-      <section className="panel-grid two-cols">
+      <section className="panel-grid corrections-grid">
         <article className="panel">
           <div className="panel-header">
             <h3>修订记录</h3>
             <small>{loading ? '加载中' : `${revisions.length} 条修正`}</small>
           </div>
           <div className="glossary-form">
-            <select value={sessionId} onChange={(event) => setSessionId(event.target.value)}>
-              <option value="">选择有修正记录的会话</option>
+            <select
+              value={sessionId}
+              onChange={(event) => setSessionId(event.target.value)}
+              disabled={!sessions.length}
+            >
               {sessions.map((session) => (
                 <option key={session.session_id} value={session.session_id}>
                   {session.name || session.session_id}
@@ -126,13 +129,12 @@ export function CorrectionsPage() {
           ) : null}
         </article>
 
-        <article className="panel">
-          <h3>自动修正机制</h3>
+        <article className="panel correction-help-panel">
+          <h3>修正说明</h3>
           <ul className="feature-list">
-            <li>第一层快速清理重复词、口头噪声和常见识别混淆。</li>
-            <li>第二层由千问结合最近字幕复核当前句和前文。</li>
-            <li>这里只展示实际发生过修正的字幕和修正原因。</li>
-            <li>每页展示 5 条记录，便于集中回看修正结果。</li>
+            <li>规则清理口头噪声和识别混淆。</li>
+            <li>千问结合上下文复核字幕。</li>
+            <li>每页展示 5 条修正记录。</li>
           </ul>
         </article>
       </section>

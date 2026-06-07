@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 
 import { fetchSessionChunks, fetchTranscriptSessions, getSessionExportUrl, type StreamTextChunk, type TranscriptSessionSummary } from '../services/api'
 
-const PAGE_SIZE = 5
+const SESSION_PAGE_SIZE = 6
+const CHUNK_PAGE_SIZE = 5
 
 type SessionsPageProps = {
   onOpenSession: (sessionId: string) => void
@@ -41,17 +42,17 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
   }, [selectedSessionId])
 
   const selectedSession = sessions.find((item) => item.session_id === selectedSessionId)
-  const sessionTotalPages = Math.max(1, Math.ceil(sessions.length / PAGE_SIZE))
-  const chunkTotalPages = Math.max(1, Math.ceil(chunks.length / PAGE_SIZE))
+  const sessionTotalPages = Math.max(1, Math.ceil(sessions.length / SESSION_PAGE_SIZE))
+  const chunkTotalPages = Math.max(1, Math.ceil(chunks.length / CHUNK_PAGE_SIZE))
   const currentSessionPage = Math.min(sessionPage, sessionTotalPages)
   const currentChunkPage = Math.min(chunkPage, chunkTotalPages)
   const visibleSessions = sessions.slice(
-    (currentSessionPage - 1) * PAGE_SIZE,
-    currentSessionPage * PAGE_SIZE,
+    (currentSessionPage - 1) * SESSION_PAGE_SIZE,
+    currentSessionPage * SESSION_PAGE_SIZE,
   )
   const visibleChunks = chunks.slice(
-    (currentChunkPage - 1) * PAGE_SIZE,
-    currentChunkPage * PAGE_SIZE,
+    (currentChunkPage - 1) * CHUNK_PAGE_SIZE,
+    currentChunkPage * CHUNK_PAGE_SIZE,
   )
 
   return (
@@ -85,7 +86,7 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
               ))}
             </div>
           )}
-          {sessions.length > PAGE_SIZE ? (
+          {sessions.length > SESSION_PAGE_SIZE ? (
             <div className="correction-pagination" aria-label="会话列表分页">
               <button
                 type="button"
@@ -139,7 +140,7 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
                   </div>
                 ))}
               </div>
-              {chunks.length > PAGE_SIZE ? (
+              {chunks.length > CHUNK_PAGE_SIZE ? (
                 <div className="correction-pagination" aria-label="会话字幕分页">
                   <button
                     type="button"
