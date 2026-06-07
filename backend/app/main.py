@@ -9,6 +9,7 @@ from app.core.database import Base, engine, ensure_transcript_translation_column
 from app.models.transcript import TranscriptRecord  # noqa: F401
 from app.models.transcript_revision import TranscriptRevision  # noqa: F401
 from app.models.transcript_session import TranscriptSession  # noqa: F401
+from app.models.glossary_conversion import GlossaryConversionRecord  # noqa: F401
 from app.services.asr_factory import get_asr_provider
 from app.services.audio_session import audio_sessions
 from app.services.connection_manager import ConnectionManager

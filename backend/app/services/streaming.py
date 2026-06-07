@@ -14,6 +14,7 @@ class TranscriptChunk:
     revision: int = 0
     auto_correction: bool = False
     correction_reasons: list[str] = field(default_factory=list)
+    glossary_conversions: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -47,6 +48,18 @@ class TranscriptBuffer:
             chunks = [item for item in chunks if item.is_final]
         return chunks
 
+    def delete_session(self, session_id: str) -> None:
+        self.items = deque(
+            item for item in self.items if item.session_id != session_id
+        )
+
+    def delete_chunk(self, session_id: str, chunk_id: str) -> None:
+        self.items = deque(
+            item
+            for item in self.items
+            if not (item.session_id == session_id and item.chunk_id == chunk_id)
+        )
+
     def export_session(self, session_id: str, fmt: str = "json") -> str | list[dict]:
         chunks = self.list_session(session_id, final_only=True)
         if fmt == "srt":
@@ -67,6 +80,7 @@ class TranscriptBuffer:
                 "revision": chunk.revision,
                 "auto_correction": chunk.auto_correction,
                 "correction_reasons": chunk.correction_reasons,
+                "glossary_conversions": chunk.glossary_conversions,
             }
             for chunk in chunks
         ]

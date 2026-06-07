@@ -17,12 +17,26 @@ export type StreamTextChunk = {
   revision: number
   auto_correction?: boolean
   correction_reasons?: string[]
+  glossary_conversions?: GlossaryConversionRecord[]
 }
 
 export type GlossaryEntry = {
   source: string
   target: string
   note?: string
+}
+
+export type GlossaryConversionRecord = {
+  id: number
+  session_id: string
+  chunk_id: string
+  glossary_source: string
+  glossary_target: string
+  before_text: string
+  converted_text: string
+  active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export type TranscriptSessionSummary = {
@@ -152,10 +166,25 @@ export async function renameTranscriptSession(sessionId: string, name: string) {
   return response.json() as Promise<TranscriptSessionSummary>
 }
 
+export async function deleteTranscriptSession(sessionId: string) {
+  const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  })
+  return parseApiResponse<{ ok: boolean }>(response, '删除会话失败')
+}
+
 export async function fetchSessionChunks(sessionId: string) {
   const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks?final_only=true`)
   if (!response.ok) throw new Error(`Failed to fetch session chunks: ${response.status}`)
   return response.json() as Promise<StreamTextChunk[]>
+}
+
+export async function deleteTranscriptChunk(sessionId: string, chunkId: string) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}`,
+    { method: 'DELETE' },
+  )
+  return parseApiResponse<{ ok: boolean }>(response, '删除字幕失败')
 }
 
 export async function fetchSessionRevisions(sessionId: string, chunkId?: string) {
@@ -165,6 +194,14 @@ export async function fetchSessionRevisions(sessionId: string, chunkId?: string)
   )
   if (!response.ok) throw new Error(`Failed to fetch revisions: ${response.status}`)
   return response.json() as Promise<StreamTextChunk[]>
+}
+
+export async function deleteTranscriptRevision(sessionId: string, chunkId: string, revision: number) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/revisions/${revision}`,
+    { method: 'DELETE' },
+  )
+  return parseApiResponse<{ ok: boolean }>(response, '删除修订记录失败')
 }
 
 export async function rollbackTranscriptChunk(
@@ -191,6 +228,35 @@ export async function restoreDirectTranslation(sessionId: string, chunkId: strin
   )
   if (!response.ok) throw new Error(`Failed to restore direct translation: ${response.status}`)
   return response.json() as Promise<StreamTextChunk>
+}
+
+export async function restoreCorrectedTranslation(sessionId: string, chunkId: string) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/chunks/${encodeURIComponent(chunkId)}/restore-corrected`,
+    { method: 'POST' },
+  )
+  return parseApiResponse<StreamTextChunk>(response, '恢复修正版失败')
+}
+
+export async function fetchGlossaryConversions(sessionId: string) {
+  const response = await fetch(`${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/glossary-conversions`)
+  return parseApiResponse<GlossaryConversionRecord[]>(response, '读取术语转换记录失败')
+}
+
+export async function toggleGlossaryConversion(sessionId: string, conversionId: number) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/glossary-conversions/${conversionId}/toggle`,
+    { method: 'POST' },
+  )
+  return parseApiResponse<StreamTextChunk>(response, '切换术语转换失败')
+}
+
+export async function deleteGlossaryConversion(sessionId: string, conversionId: number) {
+  const response = await fetch(
+    `${API_BASE}/transcripts/sessions/${encodeURIComponent(sessionId)}/glossary-conversions/${conversionId}`,
+    { method: 'DELETE' },
+  )
+  return parseApiResponse<{ ok: boolean }>(response, '删除术语转换记录失败')
 }
 
 export function getSessionExportUrl(sessionId: string, format: 'json' | 'txt' | 'srt') {

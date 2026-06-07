@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   fetchSessionRevisions,
   fetchTranscriptSessions,
+  deleteTranscriptRevision,
+  restoreCorrectedTranslation,
   restoreDirectTranslation,
   type StreamTextChunk,
   type TranscriptSessionSummary,
@@ -63,6 +65,36 @@ export function CorrectionsPage() {
       setMessage('已恢复原始直译，并生成新的修订记录。')
     } catch {
       setMessage('恢复原始直译失败，请检查后端服务。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRestoreCorrected = async (item: StreamTextChunk) => {
+    if (!sessionId) return
+    setLoading(true)
+    setMessage('')
+    try {
+      await restoreCorrectedTranslation(sessionId, item.chunk_id)
+      await reloadRevisions(sessionId)
+      setMessage('已恢复修正版，并生成新的修订记录。')
+    } catch {
+      setMessage('恢复修正版失败，可能没有可用的修正版记录。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteRevision = async (item: StreamTextChunk) => {
+    if (!sessionId) return
+    setLoading(true)
+    setMessage('')
+    try {
+      await deleteTranscriptRevision(sessionId, item.chunk_id, item.revision)
+      await reloadRevisions(sessionId)
+      setMessage('修订记录已删除。')
+    } catch {
+      setMessage('删除修订记录失败，请检查后端服务。')
     } finally {
       setLoading(false)
     }
@@ -140,6 +172,24 @@ export function CorrectionsPage() {
                     恢复原始直译
                   </button>
                 ) : null}
+                {item.direct_translation && item.translated_text === item.direct_translation ? (
+                  <button
+                    type="button"
+                    className="secondary-button correction-restore-button"
+                    disabled={loading}
+                    onClick={() => void handleRestoreCorrected(item)}
+                  >
+                    恢复修正版
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="danger-button correction-restore-button"
+                  disabled={loading}
+                  onClick={() => void handleDeleteRevision(item)}
+                >
+                  删除记录
+                </button>
               </div>
             ))}
           </div>

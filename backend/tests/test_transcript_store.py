@@ -7,6 +7,9 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.models.transcript import TranscriptRecord  # noqa: F401
 from app.models.transcript_session import TranscriptSession  # noqa: F401
+from app.models.glossary_conversion import GlossaryConversionRecord  # noqa: F401
+from app.services.glossary import glossary_manager
+from app.services.glossary_conversion import glossary_conversion_store
 from app.services.streaming import TranscriptChunk
 from app.services.transcript_store import TranscriptStore
 
@@ -110,6 +113,71 @@ class TranscriptStoreSessionTestCase(unittest.TestCase):
         self.assertEqual(history[0].source_text, "We use cache.")
         self.assertEqual(history[0].direct_translation, "我们使用现金。")
         self.assertEqual(history[1].source_text, "We use cash.")
+
+    def test_delete_session_removes_chunks_revisions_and_glossary_conversions(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        test_session_local = sessionmaker(bind=engine)
+        store = TranscriptStore()
+        glossary_manager.add_entry("cache", "缓存")
+
+        with patch(
+            "app.services.transcript_store.SessionLocal",
+            test_session_local,
+        ), patch(
+            "app.services.glossary_conversion.SessionLocal",
+            test_session_local,
+        ):
+            store.save_chunk(
+                TranscriptChunk(
+                    chunk_id="chunk-1",
+                    session_id="session-a",
+                    source_text="We use cache.",
+                    translated_text="我们使用缓存。",
+                    direct_translation="我们使用缓存。",
+                    is_final=True,
+                    revision=1,
+                )
+            )
+            conversions = glossary_conversion_store.list_session("session-a")
+
+            deleted = store.delete_session("session-a")
+
+            self.assertTrue(deleted)
+            self.assertEqual(conversions[0].glossary_source, "cache")
+            self.assertEqual(store.list_chunks("session-a"), [])
+            self.assertEqual(store.list_revisions("session-a"), [])
+            self.assertEqual(glossary_conversion_store.list_session("session-a"), [])
+
+    def test_delete_chunk_removes_its_revision_history(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        test_session_local = sessionmaker(bind=engine)
+        store = TranscriptStore()
+
+        with patch(
+            "app.services.transcript_store.SessionLocal",
+            test_session_local,
+        ), patch(
+            "app.services.glossary_conversion.SessionLocal",
+            test_session_local,
+        ):
+            store.save_chunk(
+                TranscriptChunk(
+                    chunk_id="chunk-1",
+                    session_id="session-a",
+                    source_text="Hello",
+                    translated_text="你好",
+                    is_final=True,
+                    revision=1,
+                )
+            )
+
+            deleted = store.delete_chunk("session-a", "chunk-1")
+
+            self.assertTrue(deleted)
+            self.assertEqual(store.list_chunks("session-a"), [])
+            self.assertEqual(store.list_revisions("session-a", "chunk-1"), [])
 
 
 if __name__ == "__main__":

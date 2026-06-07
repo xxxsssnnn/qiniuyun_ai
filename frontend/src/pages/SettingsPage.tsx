@@ -8,11 +8,10 @@ import {
   type AppSettings,
 } from '../services/api'
 
-type ProviderChoice = 'mock' | 'whisper' | 'qwen' | 'openai'
 type Feedback = { kind: 'success' | 'error'; message: string } | null
 
 const defaultSettings: AppSettings = {
-  asr_provider: 'mock',
+  asr_provider: 'qwen',
   translation_provider: 'mock',
   tts_provider: 'mock',
   qwen_asr_model: 'qwen3.5-omni-plus-realtime',
@@ -125,28 +124,23 @@ export function SettingsPage() {
         <div className="settings-form-grid">
           <label className="settings-field">
             <span>语音识别 ASR</span>
-            <select value={settings.asr_provider} onChange={(event) => setField('asr_provider', event.target.value as ProviderChoice)} disabled={loading}>
+            <select value="qwen" disabled>
               <option value="qwen">千问 Omni 实时翻译</option>
-              <option value="whisper">本地 Whisper</option>
-              <option value="mock">Mock 演示</option>
             </select>
             <small>直接完成语音识别和中文翻译。</small>
           </label>
 
           <label className="settings-field">
             <span>翻译</span>
-            <select value={settings.translation_provider} onChange={(event) => setField('translation_provider', event.target.value as ProviderChoice)} disabled={loading || settings.asr_provider === 'qwen'}>
+            <select value="mock" disabled>
               <option value="mock">Mock 翻译</option>
-              <option value="openai">OpenAI 兼容翻译</option>
             </select>
-            <small>{settings.asr_provider === 'qwen' ? '千问 Omni 已直接输出译文，此项不会参与。' : '对 ASR 原文执行第二阶段翻译。'}</small>
           </label>
 
           <label className="settings-field">
             <span>语音播报 TTS</span>
-            <select value={settings.tts_provider} onChange={(event) => setField('tts_provider', event.target.value as ProviderChoice)} disabled={loading}>
+            <select value="mock" disabled>
               <option value="mock">浏览器播报 / Mock</option>
-              <option value="openai">OpenAI TTS</option>
             </select>
           </label>
         </div>

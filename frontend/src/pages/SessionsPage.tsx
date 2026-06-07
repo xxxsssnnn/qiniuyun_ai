@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 
-import { fetchSessionChunks, fetchTranscriptSessions, getSessionExportUrl, type StreamTextChunk, type TranscriptSessionSummary } from '../services/api'
+import {
+  deleteTranscriptChunk,
+  deleteTranscriptSession,
+  fetchSessionChunks,
+  fetchTranscriptSessions,
+  getSessionExportUrl,
+  type StreamTextChunk,
+  type TranscriptSessionSummary,
+} from '../services/api'
 
 const SESSION_PAGE_SIZE = 6
 const CHUNK_PAGE_SIZE = 5
@@ -17,13 +25,19 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
   const [chunkPage, setChunkPage] = useState(1)
   const [loading, setLoading] = useState(false)
 
+  const loadSessions = async () => {
+    const items = await fetchTranscriptSessions()
+    setSessions(items)
+    setSelectedSessionId((current) => (
+      current && items.some((item) => item.session_id === current)
+        ? current
+        : items[0]?.session_id || ''
+    ))
+  }
+
   useEffect(() => {
     setLoading(true)
-    void fetchTranscriptSessions()
-      .then((items) => {
-        setSessions(items)
-        if (items.length && !selectedSessionId) setSelectedSessionId(items[0].session_id)
-      })
+    void loadSessions()
       .catch(() => setSessions([]))
       .finally(() => setLoading(false))
   }, [])
@@ -55,6 +69,30 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
     currentChunkPage * CHUNK_PAGE_SIZE,
   )
 
+  const handleDeleteSession = async (sessionId: string) => {
+    setLoading(true)
+    try {
+      await deleteTranscriptSession(sessionId)
+      await loadSessions()
+      if (selectedSessionId === sessionId) setChunks([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteChunk = async (chunkId: string) => {
+    if (!selectedSessionId) return
+    setLoading(true)
+    try {
+      await deleteTranscriptChunk(selectedSessionId, chunkId)
+      const updated = await fetchSessionChunks(selectedSessionId)
+      setChunks(updated)
+      await loadSessions()
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="page-hero">
@@ -74,15 +112,33 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
           ) : (
             <div className="message-list">
               {visibleSessions.map((session) => (
-                <button
+                <div
                   key={session.session_id}
                   className={session.session_id === selectedSessionId ? 'session-row active' : 'session-row'}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedSessionId(session.session_id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') setSelectedSessionId(session.session_id)
+                  }}
                 >
                   <strong>{session.name || session.session_id}</strong>
                   <span>{session.chunk_count} 条字幕 · {session.correction_count} 次纠错</span>
                   <small>{session.latest_updated_at ? new Date(session.latest_updated_at).toLocaleString() : '无更新时间'}</small>
-                </button>
+                  <span className="glossary-actions">
+                    <button
+                      type="button"
+                      className="danger-button"
+                      disabled={loading}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleDeleteSession(session.session_id)
+                      }}
+                    >
+                      删除
+                    </button>
+                  </span>
+                </div>
               ))}
             </div>
           )}
@@ -137,6 +193,22 @@ export function SessionsPage({ onOpenSession }: SessionsPageProps) {
                           : ''}
                       </small>
                     ) : null}
+                    {chunk.glossary_conversions?.length ? (
+                      <small className="subtitle-correction-note">
+                        术语转换：
+                        {chunk.glossary_conversions
+                          .map((item) => `${item.glossary_source}→${item.glossary_target}${item.active ? '' : '（已取消）'}`)
+                          .join('、')}
+                      </small>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="danger-button correction-restore-button"
+                      disabled={loading}
+                      onClick={() => void handleDeleteChunk(chunk.chunk_id)}
+                    >
+                      删除字幕
+                    </button>
                   </div>
                 ))}
               </div>
