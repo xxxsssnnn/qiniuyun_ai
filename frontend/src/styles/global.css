@@ -806,6 +806,10 @@ small,
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
 }
 
+.sessions-grid {
+  grid-template-columns: minmax(260px, 0.65fr) minmax(0, 1.7fr);
+}
+
 .panel-header,
 .glossary-item,
 .subtitle-topline {
@@ -819,6 +823,19 @@ small,
   color: #6f7d8f;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.correction-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.correction-pagination span {
+  color: #6f7d8f;
+  font-size: 13px;
 }
 
 .panel h2,
@@ -941,7 +958,8 @@ code {
   }
 
   .sci-stage-grid,
-  .content-grid {
+  .content-grid,
+  .sessions-grid {
     grid-template-columns: 1fr;
   }
 
