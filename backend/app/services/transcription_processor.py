@@ -135,6 +135,12 @@ class TranscriptionProcessor:
         payload["payload"]["revision"] = current_revision
         payload["payload"]["autoCorrection"] = True
         payload["payload"]["reasons"] = reasons
+        latest_chunk = self.buffer.latest(session_id)
+        payload["payload"]["glossaryConversions"] = (
+            latest_chunk.glossary_conversions
+            if latest_chunk and latest_chunk.chunk_id == chunk_id
+            else []
+        )
         await self.manager.broadcast(session_id, payload)
 
     async def _auto_correct_final_chunk(
@@ -375,6 +381,7 @@ class TranscriptionProcessor:
                     "directTranslation": event.translated_text,
                     "isFinal": event.is_final,
                     "revision": event.revision,
+                    "glossaryConversions": chunk_record.glossary_conversions,
                     "byteLength": byte_length,
                     "confidence": asr_result.confidence,
                     "language": asr_result.language,

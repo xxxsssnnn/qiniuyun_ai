@@ -11,6 +11,7 @@ from app.core.database import SessionLocal
 from app.models.transcript import TranscriptRecord
 from app.models.transcript_revision import TranscriptRevision
 from app.models.transcript_session import TranscriptSession
+from app.services.glossary_conversion import glossary_conversion_store
 from app.services.streaming import TranscriptChunk
 
 
@@ -31,6 +32,10 @@ class TranscriptStore:
             self._save_revision(db, chunk)
             self._upsert(db, chunk)
             db.commit()
+        chunk.glossary_conversions = [
+            asdict(item)
+            for item in glossary_conversion_store.record_for_chunk(chunk)
+        ]
 
     def _save_revision(self, db: Session, chunk: TranscriptChunk) -> None:
         existing = db.execute(
@@ -206,6 +211,70 @@ class TranscriptStore:
             record = db.execute(statement.order_by(TranscriptRecord.id.desc())).scalars().first()
             return self._to_chunk(record) if record else None
 
+    def delete_session(self, session_id: str) -> bool:
+        with SessionLocal() as db:
+            session = db.get(TranscriptSession, session_id)
+            chunks = db.execute(
+                select(TranscriptRecord).where(
+                    TranscriptRecord.session_id == session_id
+                )
+            ).scalars().all()
+            revisions = db.execute(
+                select(TranscriptRevision).where(
+                    TranscriptRevision.session_id == session_id
+                )
+            ).scalars().all()
+            if session is None and not chunks and not revisions:
+                return False
+            glossary_conversion_store.delete_session(db, session_id)
+            for item in revisions:
+                db.delete(item)
+            for item in chunks:
+                db.delete(item)
+            if session is not None:
+                db.delete(session)
+            db.commit()
+            return True
+
+    def delete_chunk(self, session_id: str, chunk_id: str) -> bool:
+        with SessionLocal() as db:
+            record = db.execute(
+                select(TranscriptRecord).where(
+                    TranscriptRecord.session_id == session_id,
+                    TranscriptRecord.chunk_id == chunk_id,
+                )
+            ).scalar_one_or_none()
+            revisions = db.execute(
+                select(TranscriptRevision).where(
+                    TranscriptRevision.session_id == session_id,
+                    TranscriptRevision.chunk_id == chunk_id,
+                )
+            ).scalars().all()
+            if record is None and not revisions:
+                return False
+            glossary_conversion_store.delete_chunk(db, chunk_id)
+            for item in revisions:
+                db.delete(item)
+            if record is not None:
+                db.delete(record)
+            db.commit()
+            return True
+
+    def delete_revision(self, session_id: str, chunk_id: str, revision: int) -> bool:
+        with SessionLocal() as db:
+            record = db.execute(
+                select(TranscriptRevision).where(
+                    TranscriptRevision.session_id == session_id,
+                    TranscriptRevision.chunk_id == chunk_id,
+                    TranscriptRevision.revision == revision,
+                )
+            ).scalar_one_or_none()
+            if record is None:
+                return False
+            db.delete(record)
+            db.commit()
+            return True
+
     def list_sessions(self) -> list[SessionSummary]:
         with SessionLocal() as db:
             records = db.execute(
@@ -270,7 +339,7 @@ class TranscriptStore:
             reasons = json.loads(record.correction_reasons or "[]")
         except json.JSONDecodeError:
             reasons = []
-        return TranscriptChunk(
+        chunk = TranscriptChunk(
             chunk_id=record.chunk_id,
             source_text=record.source_text,
             translated_text=record.translated_text,
@@ -281,13 +350,21 @@ class TranscriptStore:
             auto_correction=record.auto_correction,
             correction_reasons=reasons if isinstance(reasons, list) else [],
         )
+        chunk.glossary_conversions = [
+            asdict(item)
+            for item in glossary_conversion_store.list_chunk(
+                record.session_id,
+                record.chunk_id,
+            )
+        ]
+        return chunk
 
     def _revision_to_chunk(self, record: TranscriptRevision) -> TranscriptChunk:
         try:
             reasons = json.loads(record.correction_reasons or "[]")
         except json.JSONDecodeError:
             reasons = []
-        return TranscriptChunk(
+        chunk = TranscriptChunk(
             chunk_id=record.chunk_id,
             source_text=record.source_text,
             translated_text=record.translated_text,
@@ -298,6 +375,22 @@ class TranscriptStore:
             auto_correction=record.auto_correction,
             correction_reasons=reasons if isinstance(reasons, list) else [],
         )
+        chunk.glossary_conversions = [
+            asdict(item)
+            for item in glossary_conversion_store.list_chunk(
+                record.session_id,
+                record.chunk_id,
+            )
+        ]
+        return chunk
+        chunk.glossary_conversions = [
+            asdict(item)
+            for item in glossary_conversion_store.list_chunk(
+                record.session_id,
+                record.chunk_id,
+            )
+        ]
+        return chunk
 
     def _to_srt(self, chunks: Iterable[TranscriptChunk]) -> str:
         blocks: list[str] = []

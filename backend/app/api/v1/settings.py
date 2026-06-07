@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 class SettingsPayload(BaseModel):
-    asr_provider: str = 'mock'
+    asr_provider: str = 'qwen'
     translation_provider: str = 'mock'
     tts_provider: str = 'mock'
     qwen_asr_model: str = 'qwen3.5-omni-plus-realtime'
@@ -30,7 +30,7 @@ async def get_settings(db: Session = Depends(get_db)) -> dict[str, str | bool]:
         or os.getenv('ALIYUN_API_KEY')
     )
     return {
-        'asr_provider': stored.get('ASR_PROVIDER', 'mock'),
+        'asr_provider': stored.get('ASR_PROVIDER', 'qwen'),
         'translation_provider': stored.get('TRANSLATION_PROVIDER', 'mock'),
         'tts_provider': stored.get('TTS_PROVIDER', 'mock'),
         'qwen_asr_model': (
@@ -47,24 +47,27 @@ async def get_settings(db: Session = Depends(get_db)) -> dict[str, str | bool]:
 
 @router.put('')
 async def update_settings(payload: SettingsPayload, db: Session = Depends(get_db)) -> dict[str, str]:
-    config_store.set(db, 'ASR_PROVIDER', payload.asr_provider)
-    config_store.set(db, 'TRANSLATION_PROVIDER', payload.translation_provider)
-    config_store.set(db, 'TTS_PROVIDER', payload.tts_provider)
+    asr_provider = 'qwen'
+    translation_provider = 'mock'
+    tts_provider = 'mock'
+    config_store.set(db, 'ASR_PROVIDER', asr_provider)
+    config_store.set(db, 'TRANSLATION_PROVIDER', translation_provider)
+    config_store.set(db, 'TTS_PROVIDER', tts_provider)
     config_store.set(db, 'QWEN_ASR_MODEL', payload.qwen_asr_model)
     config_store.set(db, 'QWEN_ASR_LANGUAGE', payload.qwen_asr_language)
     config_store.set(db, 'TARGET_LANGUAGE', payload.target_language)
     config_store.set(db, 'DASHSCOPE_REGION', payload.dashscope_region)
-    apply_runtime_setting('ASR_PROVIDER', payload.asr_provider)
-    apply_runtime_setting('TRANSLATION_PROVIDER', payload.translation_provider)
-    apply_runtime_setting('TTS_PROVIDER', payload.tts_provider)
+    apply_runtime_setting('ASR_PROVIDER', asr_provider)
+    apply_runtime_setting('TRANSLATION_PROVIDER', translation_provider)
+    apply_runtime_setting('TTS_PROVIDER', tts_provider)
     apply_runtime_setting('QWEN_ASR_MODEL', payload.qwen_asr_model)
     apply_runtime_setting('QWEN_ASR_LANGUAGE', payload.qwen_asr_language)
     apply_runtime_setting('TARGET_LANGUAGE', payload.target_language)
     apply_runtime_setting('DASHSCOPE_REGION', payload.dashscope_region)
     return {
-        'asr_provider': payload.asr_provider,
-        'translation_provider': payload.translation_provider,
-        'tts_provider': payload.tts_provider,
+        'asr_provider': asr_provider,
+        'translation_provider': translation_provider,
+        'tts_provider': tts_provider,
         'qwen_asr_model': payload.qwen_asr_model,
         'qwen_asr_language': payload.qwen_asr_language,
         'target_language': payload.target_language,

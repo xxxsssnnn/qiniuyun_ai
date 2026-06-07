@@ -5,6 +5,7 @@ import {
   fetchGlossary,
   fetchSettings,
   type GlossaryEntry,
+  type GlossaryConversionRecord,
   fetchLatestChunk,
   fetchSessionChunks,
   fetchTranscriptSessions,
@@ -27,6 +28,7 @@ type SubtitleItem = {
   autoCorrection?: boolean
   correctionReasons?: string[]
   translationError?: boolean
+  glossaryConversions?: GlossaryConversionRecord[]
 }
 
 type SourceTranscriptItem = {
@@ -35,9 +37,10 @@ type SourceTranscriptItem = {
   translatedText: string
   isFinal: boolean
   updatedAt: number
+  glossaryConversions?: GlossaryConversionRecord[]
 }
 
-const SOURCE_PAGE_SIZE = 4
+const SOURCE_PAGE_SIZE = 5
 
 const audioLabels = {
   idle: '待机',
@@ -165,7 +168,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
           }
 
           if (message.type === 'chunk' || message.type === 'translated' || message.type === 'revision' || message.type === 'correction') {
-            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string; autoCorrection?: boolean; reasons?: string[]; direct_translation?: string }
+            const payload = message.payload as Partial<SubtitleItem> & { chunk_id?: string; autoCorrection?: boolean; reasons?: string[]; direct_translation?: string; glossaryConversions?: GlossaryConversionRecord[]; glossary_conversions?: GlossaryConversionRecord[] }
             if (!payload?.chunk_id) return
             setSubtitles((prev) => {
               const existing = prev.find((item) => item.id === payload.chunk_id)
@@ -176,6 +179,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
               const revision = payload.revision ?? (payload as any).currentRevision ?? existing?.revision ?? 0
               const autoCorrection = payload.autoCorrection ?? existing?.autoCorrection ?? false
               const correctionReasons = payload.reasons ?? payload.correctionReasons ?? existing?.correctionReasons ?? []
+              const glossaryConversions = payload.glossaryConversions ?? payload.glossary_conversions ?? existing?.glossaryConversions ?? []
               const providerError = isProviderError(sourceText, translatedText)
 
               if (sourceText.trim() && !isProviderError(sourceText, '')) {
@@ -188,6 +192,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
                       : translatedText,
                     isFinal,
                     updatedAt: Date.now(),
+                    glossaryConversions,
                   }
                   return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 40)
                 })
@@ -210,6 +215,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
                 autoCorrection,
                 correctionReasons,
                 translationError: providerError,
+                glossaryConversions,
               }
               if (!providerError && autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
                 const spoke = speakText(translatedText, speechLanguageRef.current)
@@ -245,6 +251,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
           correctionCount: chunk.auto_correction ? 1 : 0,
           autoCorrection: chunk.auto_correction ?? false,
           correctionReasons: chunk.correction_reasons ?? [],
+          glossaryConversions: chunk.glossaryConversions ?? chunk.glossary_conversions ?? [],
           translationError: providerError,
           updatedAt: Date.now(),
         }
@@ -256,6 +263,7 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
         translatedText: item.translatedText,
         isFinal: item.isFinal,
         updatedAt: item.updatedAt,
+        glossaryConversions: item.glossaryConversions,
       })))
       setSourcePage(1)
     }).catch(() => undefined)
@@ -431,6 +439,15 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
                     AI 已自动纠错{displayedSubtitle.correctionReasons?.length ? `：${displayedSubtitle.correctionReasons.join('、')}` : ''}
                   </small>
                 ) : null}
+                {displayedSubtitle.glossaryConversions?.length ? (
+                  <small className="sci-correction-badge">
+                    术语转换：
+                    {displayedSubtitle.glossaryConversions
+                      .filter((item) => item.active)
+                      .map((item) => `${item.glossary_source}→${item.glossary_target}`)
+                      .join('、') || '已取消'}
+                  </small>
+                ) : null}
               </>
             ) : selectedSource ? (
               <>
@@ -496,6 +513,11 @@ export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
               >
                 <p>{item.sourceText}</p>
                 <strong>{item.translatedText || (item.isFinal ? '译文生成中...' : '等待完整语句')}</strong>
+                {item.glossaryConversions?.length ? (
+                  <small>
+                    术语转换 {item.glossaryConversions.filter((conversion) => conversion.active).length}
+                  </small>
+                ) : null}
                 <small>
                   {selectedSourceId === item.id ? '正在查看' : item.isFinal ? '已确认' : '识别中'}
                   {' · '}

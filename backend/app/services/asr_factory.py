@@ -4,7 +4,7 @@ from app.services.asr import ASRProvider, MockASRProvider
 
 
 def get_asr_provider() -> ASRProvider:
-    provider_name = os.getenv("ASR_PROVIDER", "mock").lower()
+    provider_name = os.getenv("ASR_PROVIDER", "qwen").lower()
     if provider_name == "qwen":
         from app.services.qwen_asr import QwenASRProvider
 

@@ -22,3 +22,4 @@ class TranscriptChunkRead(BaseModel):
     revision: int = 0
     auto_correction: bool = False
     correction_reasons: list[str] = Field(default_factory=list)
+    glossary_conversions: list[dict] = Field(default_factory=list)
