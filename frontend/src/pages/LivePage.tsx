@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
 import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk } from '../services/api'
-import { startAudioCapture, type AudioCaptureState } from '../services/audio'
+import { startAudioCapture, type AudioCaptureSession, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
 
@@ -31,8 +31,8 @@ export function LivePage() {
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
-  const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
-  const audioSessionRef = useRef<{ stop: () => void } | null>(null)
+  const [audioSession, setAudioSession] = useState<AudioCaptureSession | null>(null)
+  const audioSessionRef = useRef<AudioCaptureSession | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [autoSpeak, setAutoSpeak] = useState(true)
   const autoSpeakRef = useRef(true)
@@ -104,7 +104,7 @@ export function LivePage() {
     })
 
     return () => {
-      audioSessionRef.current?.stop()
+      void audioSessionRef.current?.stop()
       audioSessionRef.current = null
       realtimeSocket.close()
       stopSpeaking()
@@ -160,8 +160,8 @@ export function LivePage() {
     }
   }
 
-  const handleStopAudio = () => {
-    audioSession?.stop()
+  const handleStopAudio = async () => {
+    await audioSession?.stop()
     audioSessionRef.current = null
     setAudioSession(null)
     setAudioState('stopped')

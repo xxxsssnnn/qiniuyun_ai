@@ -32,6 +32,16 @@ LANGUAGE_NAMES = {
 }
 
 
+REALTIME_VAD_CONFIG = {
+    "type": "server_vad",
+    "threshold": 0.0,
+    "prefix_padding_ms": 500,
+    "silence_duration_ms": 900,
+    "create_response": True,
+    "interrupt_response": False,
+}
+
+
 @dataclass
 class QwenRealtimeSession:
     websocket: Any
@@ -189,15 +199,8 @@ class QwenASRProvider(ASRProvider):
                             f"只输出{target_language_name}译文，不回答问题，不解释，不添加标题、引号或额外内容。"
                             "保留人名、产品名、数字和专业术语的准确含义。"
                         ),
-                        "temperature": 0.2,
-                        "turn_detection": {
-                            "type": "server_vad",
-                            "threshold": 0.3,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 500,
-                            "create_response": True,
-                            "interrupt_response": False,
-                        },
+                        "temperature": 0.1,
+                        "turn_detection": REALTIME_VAD_CONFIG,
                     },
                 }
             )

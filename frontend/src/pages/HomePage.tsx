@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { StatusCard } from '../components/StatusCard'
 import { addGlossaryEntry, deleteGlossaryEntry, fetchGlossary, updateGlossaryEntry, type GlossaryEntry } from '../services/api'
-import { startAudioCapture, type AudioCaptureState } from '../services/audio'
+import { startAudioCapture, type AudioCaptureSession, type AudioCaptureState } from '../services/audio'
 import { closeRealtimeSocket, createRealtimeSocket, type RealtimeMessage } from '../services/ws'
 
 type SubtitleItem = {
@@ -28,7 +28,7 @@ export function HomePage() {
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [socket, setSocket] = useState<WebSocket | null>(null)
-  const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
+  const [audioSession, setAudioSession] = useState<AudioCaptureSession | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [newSource, setNewSource] = useState('')
   const [newTarget, setNewTarget] = useState('')
@@ -108,8 +108,8 @@ export function HomePage() {
     }
   }
 
-  const handleStopAudio = () => {
-    audioSession?.stop()
+  const handleStopAudio = async () => {
+    await audioSession?.stop()
     setAudioSession(null)
     setAudioState('stopped')
     if (socket && socket.readyState === WebSocket.OPEN) {
