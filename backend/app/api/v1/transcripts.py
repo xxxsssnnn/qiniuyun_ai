@@ -1,6 +1,8 @@
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Response, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 
 from app.services.transcript_store import transcript_store
 
@@ -20,6 +22,14 @@ from app.services.tts_factory import get_tts_provider
 router = APIRouter()
 buffer = TranscriptBuffer()
 manager = ConnectionManager()
+
+
+class SessionCreate(BaseModel):
+    name: str = Field(default="新会话", max_length=160)
+
+
+class SessionUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
 
 
 @router.post("/chunks", response_model=TranscriptChunkRead)
@@ -60,6 +70,18 @@ async def stream_chunk(payload: StreamTextChunk) -> StreamTextChunk:
 @router.get("/sessions")
 async def list_sessions() -> list[dict]:
     return [summary.__dict__ for summary in transcript_store.list_sessions()]
+
+
+@router.post("/sessions")
+async def create_session(payload: SessionCreate) -> dict:
+    session_id = f"session-{uuid4().hex}"
+    return transcript_store.create_session(session_id, payload.name).__dict__
+
+
+@router.patch("/sessions/{session_id}")
+async def rename_session(session_id: str, payload: SessionUpdate) -> dict:
+    session = transcript_store.rename_session(session_id, payload.name)
+    return session.__dict__ if session else {}
 
 
 @router.get("/sessions/{session_id}/chunks", response_model=list[TranscriptChunkRead])

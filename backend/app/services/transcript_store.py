@@ -9,22 +9,90 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.transcript import TranscriptRecord
+from app.models.transcript_session import TranscriptSession
 from app.services.streaming import TranscriptChunk
 
 
 @dataclass
 class SessionSummary:
     session_id: str
+    name: str
     chunk_count: int
     correction_count: int
+    created_at: str
     latest_updated_at: str
 
 
 class TranscriptStore:
     def save_chunk(self, chunk: TranscriptChunk) -> None:
         with SessionLocal() as db:
+            self._ensure_session(db, chunk.session_id)
             self._upsert(db, chunk)
             db.commit()
+
+    def create_session(self, session_id: str, name: str) -> SessionSummary:
+        normalized_name = name.strip() or "未命名会话"
+        with SessionLocal() as db:
+            existing = db.get(TranscriptSession, session_id)
+            if existing is None:
+                existing = TranscriptSession(
+                    session_id=session_id,
+                    name=normalized_name,
+                )
+                db.add(existing)
+            else:
+                existing.name = normalized_name
+            db.commit()
+        return self.get_session(session_id) or SessionSummary(
+            session_id=session_id,
+            name=normalized_name,
+            chunk_count=0,
+            correction_count=0,
+            created_at="",
+            latest_updated_at="",
+        )
+
+    def rename_session(self, session_id: str, name: str) -> SessionSummary | None:
+        normalized_name = name.strip()
+        if not normalized_name:
+            return None
+        with SessionLocal() as db:
+            session = db.get(TranscriptSession, session_id)
+            if session is None:
+                session = TranscriptSession(
+                    session_id=session_id,
+                    name=normalized_name,
+                )
+                db.add(session)
+            else:
+                session.name = normalized_name
+            db.commit()
+        return self.get_session(session_id)
+
+    def get_session(self, session_id: str) -> SessionSummary | None:
+        return next(
+            (
+                session
+                for session in self.list_sessions()
+                if session.session_id == session_id
+            ),
+            None,
+        )
+
+    def _ensure_session(self, db: Session, session_id: str) -> TranscriptSession:
+        session = db.get(TranscriptSession, session_id)
+        if session is None:
+            session = TranscriptSession(
+                session_id=session_id,
+                name=self._default_session_name(session_id),
+            )
+            db.add(session)
+        return session
+
+    def _default_session_name(self, session_id: str) -> str:
+        if session_id == "demo-session":
+            return "默认会话"
+        return f"会话 {session_id[-8:]}"
 
     def _upsert(self, db: Session, chunk: TranscriptChunk) -> TranscriptRecord:
         record = db.execute(
@@ -72,21 +140,48 @@ class TranscriptStore:
 
     def list_sessions(self) -> list[SessionSummary]:
         with SessionLocal() as db:
-            records = db.execute(select(TranscriptRecord).order_by(TranscriptRecord.updated_at.desc())).scalars().all()
+            records = db.execute(
+                select(TranscriptRecord).order_by(TranscriptRecord.updated_at.desc())
+            ).scalars().all()
+            sessions = db.execute(
+                select(TranscriptSession).order_by(TranscriptSession.updated_at.desc())
+            ).scalars().all()
         grouped: dict[str, list[TranscriptRecord]] = {}
         for record in records:
             grouped.setdefault(record.session_id, []).append(record)
 
+        metadata = {session.session_id: session for session in sessions}
+        all_session_ids = set(metadata) | set(grouped)
         summaries: list[SessionSummary] = []
-        for session_id, items in grouped.items():
+        for session_id in all_session_ids:
+            items = grouped.get(session_id, [])
             final_items = [item for item in items if item.is_final]
-            latest = max(items, key=lambda item: item.updated_at)
+            session = metadata.get(session_id)
+            latest_record = max(items, key=lambda item: item.updated_at) if items else None
+            latest_at = (
+                latest_record.updated_at
+                if latest_record is not None
+                else session.updated_at if session is not None else None
+            )
+            created_at = (
+                session.created_at
+                if session is not None
+                else min(items, key=lambda item: item.created_at).created_at
+                if items
+                else None
+            )
             summaries.append(
                 SessionSummary(
                     session_id=session_id,
+                    name=(
+                        session.name
+                        if session is not None
+                        else self._default_session_name(session_id)
+                    ),
                     chunk_count=len(final_items),
                     correction_count=sum(1 for item in final_items if item.auto_correction),
-                    latest_updated_at=latest.updated_at.isoformat() if latest.updated_at else "",
+                    created_at=created_at.isoformat() if created_at else "",
+                    latest_updated_at=latest_at.isoformat() if latest_at else "",
                 )
             )
         return sorted(summaries, key=lambda item: item.latest_updated_at, reverse=True)

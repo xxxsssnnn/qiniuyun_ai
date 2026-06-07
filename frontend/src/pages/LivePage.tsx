@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { fetchGlossary, fetchSettings, type GlossaryEntry, fetchLatestChunk, fetchSessionChunks, getSessionExportUrl } from '../services/api'
+import {
+  createTranscriptSession,
+  fetchGlossary,
+  fetchSettings,
+  type GlossaryEntry,
+  fetchLatestChunk,
+  fetchSessionChunks,
+  fetchTranscriptSessions,
+  getSessionExportUrl,
+  type TranscriptSessionSummary,
+} from '../services/api'
 import { startAudioCapture, type AudioCaptureState } from '../services/audio'
 import { speakText, stopSpeaking } from '../services/speech'
 import { createRealtimeSocketWithFallback, type RealtimeMessage } from '../services/ws'
@@ -49,13 +59,21 @@ function getProviderErrorMessage(text: string) {
   return '翻译服务暂时异常，已保留最新原文'
 }
 
-export function LivePage() {
-  const sessionId = useMemo(() => 'demo-session', [])
+type LivePageProps = {
+  sessionId: string
+  onSessionChange: (sessionId: string) => void
+}
+
+export function LivePage({ sessionId, onSessionChange }: LivePageProps) {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle')
   const [audioState, setAudioState] = useState<AudioCaptureState>('idle')
   const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<TranscriptSessionSummary[]>([])
+  const [newSessionName, setNewSessionName] = useState('')
+  const [creatingSession, setCreatingSession] = useState(false)
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
   const [audioSession, setAudioSession] = useState<{ stop: () => Promise<void> } | null>(null)
   const audioSessionRef = useRef<{ stop: () => Promise<void> } | null>(null)
@@ -67,9 +85,37 @@ export function LivePage() {
   const canRecord = connectionStatus === 'connected' && audioState !== 'recording' && audioState !== 'starting'
   const visibleSubtitles = subtitles.filter((item) => item.isFinal && (item.sourceText.trim() || item.translatedText.trim()))
   const latestSubtitle = visibleSubtitles[0]
+  const selectedSource = selectedSourceId
+    ? sourceTranscript.find((item) => item.id === selectedSourceId)
+    : null
+  const selectedSubtitle = selectedSource
+    ? visibleSubtitles.find((item) => item.id === selectedSource.id)
+      ?? visibleSubtitles.find((item) => item.sourceText.trim() === selectedSource.text.trim())
+    : null
+  const displayedSubtitle = selectedSourceId ? selectedSubtitle : latestSubtitle
   const totalCorrections = visibleSubtitles.reduce((sum, item) => sum + item.correctionCount, 0)
 
   useEffect(() => {
+    void fetchTranscriptSessions()
+      .then(async (items) => {
+        setSessions(items)
+        if (sessionId) return
+        if (items.length) {
+          onSessionChange(items[0].session_id)
+          return
+        }
+        const created = await createTranscriptSession('我的第一次传译')
+        setSessions([created])
+        onSessionChange(created.session_id)
+      })
+      .catch(() => undefined)
+  }, [sessionId, onSessionChange])
+
+  useEffect(() => {
+    if (!sessionId) return
+    setSubtitles([])
+    setSourceTranscript([])
+    setSelectedSourceId(null)
     setConnectionStatus('connecting')
     const realtimeSocket = createRealtimeSocketWithFallback(sessionId, {
       onOpen: () => setConnectionStatus('connected'),
@@ -149,7 +195,7 @@ export function LivePage() {
     setSocket(realtimeSocket)
 
     void fetchSessionChunks(sessionId).then((chunks) => {
-      if (!chunks.length) return fetchLatestChunk().then((chunk) => (chunk ? [chunk] : []))
+      if (!chunks.length) return fetchLatestChunk(sessionId).then((chunk) => (chunk ? [chunk] : []))
       return chunks
     }).then((chunks) => {
       if (!chunks.length) return
@@ -191,6 +237,21 @@ export function LivePage() {
   const handleStartDemo = () => {
     if (!socket || socket.current.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'start_demo' }))
+  }
+
+  const handleCreateSession = async () => {
+    if (creatingSession || audioState === 'recording') return
+    setCreatingSession(true)
+    try {
+      const created = await createTranscriptSession(
+        newSessionName.trim() || `新会话 ${sessions.length + 1}`,
+      )
+      setSessions((current) => [created, ...current])
+      setNewSessionName('')
+      onSessionChange(created.session_id)
+    } finally {
+      setCreatingSession(false)
+    }
   }
 
   const handleStartAudio = async () => {
@@ -254,25 +315,76 @@ export function LivePage() {
         </div>
       </section>
 
+      <section className="sci-session-bar" aria-label="实时传译会话">
+        <label>
+          <span>当前会话</span>
+          <select
+            value={sessionId}
+            onChange={(event) => onSessionChange(event.target.value)}
+            disabled={audioState === 'recording' || creatingSession}
+          >
+            {sessions.map((session) => (
+              <option key={session.session_id} value={session.session_id}>
+                {session.name || session.session_id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="sci-session-name">
+          <span>新会话名称</span>
+          <input
+            value={newSessionName}
+            onChange={(event) => setNewSessionName(event.target.value)}
+            placeholder="例如：AI 技术大会"
+            maxLength={160}
+            disabled={audioState === 'recording' || creatingSession}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void handleCreateSession()
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => void handleCreateSession()}
+          disabled={audioState === 'recording' || creatingSession}
+        >
+          {creatingSession ? '创建中...' : '新建会话'}
+        </button>
+        <small>每个会话的字幕、纠错与导出记录均独立保存。</small>
+      </section>
+
       <section className="sci-stage-grid">
         <article className="sci-panel sci-translation-panel">
           <div className="sci-panel-head">
             <span>TRANSLATION OUTPUT</span>
-            <small>{latestSubtitle ? 'FINAL' : 'STANDBY'}</small>
+            <div className="sci-panel-head-actions">
+              {selectedSourceId ? (
+                <button type="button" className="sci-latest-button" onClick={() => setSelectedSourceId(null)}>
+                  返回最新
+                </button>
+              ) : null}
+              <small>{selectedSourceId ? 'SELECTED' : displayedSubtitle ? 'LATEST' : 'STANDBY'}</small>
+            </div>
           </div>
           <div className="sci-translation-screen">
-            {latestSubtitle ? (
+            {displayedSubtitle ? (
               <>
-                <p>{latestSubtitle.sourceText || '正在等待原文...'}</p>
-                <h2>{latestSubtitle.translatedText || '译文生成中...'}</h2>
-                {latestSubtitle.translationError ? (
+                <p>{displayedSubtitle.sourceText || '正在等待原文...'}</p>
+                <h2>{displayedSubtitle.translatedText || '译文生成中...'}</h2>
+                {displayedSubtitle.translationError ? (
                   <small className="sci-correction-badge">请在设置中检查翻译模型与 API Key</small>
                 ) : null}
-                {latestSubtitle.autoCorrection ? (
+                {displayedSubtitle.autoCorrection ? (
                   <small className="sci-correction-badge">
-                    AI 已自动纠错{latestSubtitle.correctionReasons?.length ? `：${latestSubtitle.correctionReasons.join('、')}` : ''}
+                    AI 已自动纠错{displayedSubtitle.correctionReasons?.length ? `：${displayedSubtitle.correctionReasons.join('、')}` : ''}
                   </small>
                 ) : null}
+              </>
+            ) : selectedSource ? (
+              <>
+                <p>{selectedSource.text}</p>
+                <h2>译文生成中...</h2>
               </>
             ) : (
               <div className="sci-empty-screen">
@@ -302,10 +414,20 @@ export function LivePage() {
             {sourceTranscript.length === 0 ? (
               <div className="sci-source-empty">开始后，识别到的原文会实时出现在这里。</div>
             ) : sourceTranscript.map((item) => (
-              <div key={item.id} className={`sci-source-line ${item.isFinal ? 'final' : 'draft'}`}>
+              <button
+                type="button"
+                key={item.id}
+                className={`sci-source-line ${item.isFinal ? 'final' : 'draft'} ${selectedSourceId === item.id ? 'selected' : ''}`}
+                aria-pressed={selectedSourceId === item.id}
+                onClick={() => setSelectedSourceId(item.id)}
+              >
                 <p>{item.text}</p>
-                <small>{item.isFinal ? '已确认' : '识别中'} · {new Date(item.updatedAt).toLocaleTimeString()}</small>
-              </div>
+                <small>
+                  {selectedSourceId === item.id ? '正在查看' : item.isFinal ? '已确认' : '识别中'}
+                  {' · '}
+                  {new Date(item.updatedAt).toLocaleTimeString()}
+                </small>
+              </button>
             ))}
           </div>
         </article>

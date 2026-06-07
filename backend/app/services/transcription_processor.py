@@ -1,10 +1,10 @@
 import asyncio
-import itertools
 import os
 import re
 import time
 from dataclasses import dataclass
 from typing import Dict, Optional
+from uuid import uuid4
 
 from app.services.asr import ASRProvider, ASRResult
 from app.services.auto_correction import auto_correction_engine
@@ -41,7 +41,6 @@ class TranscriptionProcessor:
         self.translation_provider = translation_provider
         self.tts_provider = tts_provider
         self.target_language = os.getenv("TARGET_LANGUAGE", "zh")
-        self._counter = itertools.count(1)
         self._active_chunk_ids: Dict[str, str] = {}
         self._revisions: Dict[str, int] = {}
         self._sentence_buffers: Dict[str, list[str]] = {}
@@ -51,6 +50,9 @@ class TranscriptionProcessor:
         self._translation_timeout_seconds = float(os.getenv("TRANSLATION_TIMEOUT_SECONDS", "3.5"))
         self._auto_correction_enabled = os.getenv("AUTO_CORRECTION_ENABLED", "true").lower() != "false"
         self._auto_correction_min_confidence = float(os.getenv("AUTO_CORRECTION_MIN_CONFIDENCE", "0.68"))
+
+    def _new_chunk_id(self, session_id: str) -> str:
+        return f"{session_id}-chunk-{uuid4().hex}"
 
     def _should_flush_sentence_buffer(self, session_id: str, text: str) -> bool:
         compact_text = text.strip()
@@ -200,7 +202,6 @@ class TranscriptionProcessor:
         asr_result: ASRResult,
         byte_length: int = 0,
     ) -> None:
-        index = next(self._counter)
         source_text = asr_result.text.strip()
         model_translated_text = (asr_result.translated_text or "").strip()
         if not source_text and not model_translated_text:
@@ -209,7 +210,7 @@ class TranscriptionProcessor:
         is_final = asr_result.is_final
         chunk_id = self._active_chunk_ids.get(session_id)
         if not chunk_id:
-            chunk_id = f"{session_id}-chunk-{index}"
+            chunk_id = self._new_chunk_id(session_id)
             self._active_chunk_ids[session_id] = chunk_id
 
         current_revision = self._revisions.get(chunk_id, 0)
@@ -250,7 +251,7 @@ class TranscriptionProcessor:
             if buffered_text is None:
                 return
             translation_source_text = buffered_text
-            chunk_id = f"{session_id}-chunk-{next(self._counter)}"
+            chunk_id = self._new_chunk_id(session_id)
             current_revision = 1
             self._revisions[chunk_id] = current_revision
         else:

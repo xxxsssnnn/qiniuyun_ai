@@ -386,6 +386,49 @@ small,
   box-shadow: var(--shadow), inset 0 0 34px rgba(94, 234, 212, 0.03);
 }
 
+.sci-session-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) auto minmax(220px, 1fr);
+  align-items: end;
+  gap: 0.85rem;
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(94, 234, 212, 0.14);
+  border-radius: 18px;
+  background: rgba(5, 17, 31, 0.82);
+  box-shadow: inset 0 0 28px rgba(96, 165, 250, 0.035);
+}
+
+.sci-session-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sci-session-bar label > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sci-session-bar select,
+.sci-session-bar input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 11px;
+  color: var(--text);
+  background: rgba(3, 12, 23, 0.88);
+  font: inherit;
+}
+
+.sci-session-bar > small {
+  align-self: center;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .sci-toolbar::before,
 .sci-panel::before {
   position: absolute;
@@ -495,6 +538,29 @@ small,
   color: var(--cyan);
   font-size: 0.72rem;
   font-weight: 950;
+}
+
+.sci-panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sci-latest-button {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  border-radius: 999px;
+  color: #d7fffb;
+  background: rgba(94, 234, 212, 0.08);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sci-latest-button:hover {
+  border-color: rgba(94, 234, 212, 0.58);
+  background: rgba(94, 234, 212, 0.16);
 }
 
 .sci-translation-panel {
@@ -634,12 +700,37 @@ small,
 }
 
 .sci-source-line {
+  width: 100%;
   padding: 0.95rem;
   border: 1px solid rgba(94, 234, 212, 0.13);
   border-left: 3px solid var(--blue);
   border-radius: 16px;
+  color: inherit;
+  text-align: left;
   background: rgba(4, 11, 22, 0.64);
   box-shadow: inset 0 0 24px rgba(96, 165, 250, 0.025);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.sci-source-line:hover {
+  border-color: rgba(94, 234, 212, 0.34);
+  background: rgba(11, 29, 48, 0.76);
+  transform: translateY(-1px);
+}
+
+.sci-source-line.selected {
+  border-color: rgba(94, 234, 212, 0.72);
+  border-left-color: var(--cyan);
+  background: rgba(18, 57, 76, 0.72);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.12), inset 0 0 28px rgba(94, 234, 212, 0.08);
+}
+
+.sci-source-line:focus-visible,
+.sci-latest-button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
 }
 
 .sci-source-line.final {
@@ -851,6 +942,14 @@ code {
     min-height: 260px;
   }
 
+  .sci-session-bar {
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .sci-session-bar > small {
+    grid-column: 1 / -1;
+  }
+
   .panel-grid,
   .settings-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -931,6 +1030,14 @@ code {
   .sci-toolbar {
     padding: 0.85rem;
     border-radius: 16px;
+  }
+
+  .sci-session-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .sci-session-bar > small {
+    grid-column: auto;
   }
 
   .sci-actions > button {

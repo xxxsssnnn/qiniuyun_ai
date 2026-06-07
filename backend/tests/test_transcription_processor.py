@@ -47,6 +47,47 @@ class TranscriptionProcessorTranslationTestCase(unittest.IsolatedAsyncioTestCase
         self.assertEqual(final_messages[0]["payload"]["sourceText"], "你好")
         self.assertEqual(final_messages[0]["payload"]["translatedText"], "Hello")
 
+    async def test_reconnected_session_generates_unique_chunk_ids(self) -> None:
+        first_manager = AsyncMock()
+        second_manager = AsyncMock()
+        first_processor = TranscriptionProcessor(
+            first_manager,
+            TranscriptBuffer(),
+            MockASRProvider(),
+            MockTranslationProvider(),
+        )
+        second_processor = TranscriptionProcessor(
+            second_manager,
+            TranscriptBuffer(),
+            MockASRProvider(),
+            MockTranslationProvider(),
+        )
+        result = ASRResult(
+            text="你好",
+            translated_text="Hello",
+            is_final=True,
+            confidence=1.0,
+            language="zh",
+        )
+
+        with patch(
+            "app.services.transcription_processor.transcript_store.save_chunk"
+        ):
+            await first_processor.handle_asr_result("session-1", result)
+            await second_processor.handle_asr_result("session-1", result)
+
+        first_chunk_id = next(
+            call.args[1]["payload"]["chunk_id"]
+            for call in first_manager.broadcast.await_args_list
+            if call.args[1]["type"] == "revision"
+        )
+        second_chunk_id = next(
+            call.args[1]["payload"]["chunk_id"]
+            for call in second_manager.broadcast.await_args_list
+            if call.args[1]["type"] == "revision"
+        )
+        self.assertNotEqual(first_chunk_id, second_chunk_id)
+
 
 if __name__ == "__main__":
     unittest.main()

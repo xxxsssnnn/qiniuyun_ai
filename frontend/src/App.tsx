@@ -20,7 +20,13 @@ type TabId = typeof tabs[number]['id']
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('live')
+  const [liveSessionId, setLiveSessionId] = useState('')
   const activeTabInfo = useMemo(() => tabs.find((tab) => tab.id === activeTab) ?? tabs[0], [activeTab])
+
+  const handleOpenLiveSession = (sessionId: string) => {
+    setLiveSessionId(sessionId)
+    setActiveTab('live')
+  }
 
   return (
     <div className="app-frame">
@@ -73,13 +79,18 @@ export function App() {
         </header>
 
         <main className="app-main">
-          <div hidden={activeTab !== 'live'}>
-            <LivePage />
-          </div>
+          {activeTab === 'live' && (
+            <LivePage
+              sessionId={liveSessionId}
+              onSessionChange={setLiveSessionId}
+            />
+          )}
           {activeTab === 'dashboard' && <DashboardPage />}
           {activeTab === 'glossary' && <GlossaryPage />}
           {activeTab === 'corrections' && <CorrectionsPage />}
-          {activeTab === 'sessions' && <SessionsPage />}
+          {activeTab === 'sessions' && (
+            <SessionsPage onOpenSession={handleOpenLiveSession} />
+          )}
           {activeTab === 'settings' && <SettingsPage />}
         </main>
       </div>
