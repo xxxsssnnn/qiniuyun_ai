@@ -11,6 +11,7 @@ class ASRResult:
     confidence: float = 0.0
     language: str = "en"
     revision: int = 0
+    error: str | None = None
 
 
 class ASRProvider(ABC):

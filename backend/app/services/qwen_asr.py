@@ -45,6 +45,7 @@ class QwenRealtimeSession:
     pending_partial: ASRResult | None = None
     finished: bool = False
     closed: asyncio.Event = field(default_factory=asyncio.Event)
+    response_done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class QwenASRProvider(ASRProvider):
@@ -116,14 +117,16 @@ class QwenASRProvider(ASRProvider):
                     session.pending_partial = None
                     session.source_text = ""
                     session.translated_text = ""
+                elif event_type == "response.done":
+                    session.response_done.set()
                 elif event_type == "error":
                     error = event.get("error", {})
                     message = error.get("message", "Qwen realtime ASR error")
                     await session.results.put(
                         ASRResult(
-                            text=f"[Qwen ASR error] {message}",
-                            is_final=True,
+                            text="",
                             language=session.language,
+                            error=f"Qwen ASR error: {message}",
                         )
                     )
         except asyncio.CancelledError:
@@ -240,14 +243,6 @@ class QwenASRProvider(ASRProvider):
 
     async def test_connection(self) -> None:
         session = await self._create_session()
-        await session.websocket.send(
-            json.dumps(
-                {
-                    "event_id": f"event_{uuid.uuid4().hex}",
-                    "type": "session.finish",
-                }
-            )
-        )
         await session.websocket.close()
         if session.reader_task:
             session.reader_task.cancel()
@@ -325,15 +320,23 @@ class QwenASRProvider(ASRProvider):
             return
         session.finished = True
         try:
+            session.response_done.clear()
+            # Server VAD commits after detecting silence. Sending a short silent
+            # tail flushes the final utterance before the socket is closed.
             await session.websocket.send(
                 json.dumps(
                     {
                         "event_id": f"event_{uuid.uuid4().hex}",
-                        "type": "session.finish",
+                        "type": "input_audio_buffer.append",
+                        "audio": base64.b64encode(bytes(16000)).decode("ascii"),
                     }
                 )
             )
-        except Exception:
+            try:
+                await asyncio.wait_for(session.response_done.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
+        except (ConnectionClosed, OSError):
             pass
 
     async def close_session(self, session_id: str) -> None:

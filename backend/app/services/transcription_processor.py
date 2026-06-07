@@ -46,6 +46,16 @@ class TranscriptionProcessor:
         asr_result: ASRResult,
         byte_length: int = 0,
     ) -> None:
+        if asr_result.error:
+            await self.manager.broadcast(
+                session_id,
+                {
+                    "type": "error",
+                    "session_id": session_id,
+                    "payload": {"message": asr_result.error},
+                },
+            )
+            return
         index = next(self._counter)
         if not asr_result.text.strip() and not (asr_result.translated_text or "").strip():
             return
