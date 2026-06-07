@@ -32,6 +32,32 @@ LANGUAGE_NAMES = {
 }
 
 
+def _bounded_int_env(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _bounded_float_env(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(value, maximum))
+
+
 @dataclass
 class QwenRealtimeSession:
     websocket: Any
@@ -44,6 +70,8 @@ class QwenRealtimeSession:
     translated_text: str = ""
     pending_partial: ASRResult | None = None
     finished: bool = False
+    finish_requested: bool = False
+    finish_confirmed: asyncio.Event = field(default_factory=asyncio.Event)
     closed: asyncio.Event = field(default_factory=asyncio.Event)
 
 
@@ -64,8 +92,42 @@ class QwenASRProvider(ASRProvider):
         self.language = os.getenv("QWEN_ASR_LANGUAGE", "en")
         self.target_language = os.getenv("TARGET_LANGUAGE", "zh")
         self.region = os.getenv("DASHSCOPE_REGION", "cn").lower()
+        self.vad_silence_duration_ms = _bounded_int_env(
+            "QWEN_VAD_SILENCE_MS",
+            default=900,
+            minimum=500,
+            maximum=3000,
+        )
+        self.vad_threshold = _bounded_float_env(
+            "QWEN_VAD_THRESHOLD",
+            default=0.1,
+            minimum=0.1,
+            maximum=0.9,
+        )
+        self.vad_prefix_padding_ms = _bounded_int_env(
+            "QWEN_VAD_PREFIX_PADDING_MS",
+            default=500,
+            minimum=100,
+            maximum=1000,
+        )
+        self.finish_timeout_seconds = _bounded_float_env(
+            "QWEN_FINISH_TIMEOUT_SECONDS",
+            default=4.0,
+            minimum=1.0,
+            maximum=10.0,
+        )
         self._sessions: dict[str, QwenRealtimeSession] = {}
         self._session_lock = asyncio.Lock()
+
+    @property
+    def vad_type(self) -> str:
+        configured_type = os.getenv("QWEN_VAD_TYPE", "").strip().lower()
+        supports_semantic_vad = self.model.startswith("qwen3.5-omni")
+        if configured_type == "server_vad":
+            return configured_type
+        if configured_type == "semantic_vad" and supports_semantic_vad:
+            return configured_type
+        return "semantic_vad" if supports_semantic_vad else "server_vad"
 
     @property
     def base_url(self) -> str:
@@ -116,6 +178,8 @@ class QwenASRProvider(ASRProvider):
                     session.pending_partial = None
                     session.source_text = ""
                     session.translated_text = ""
+                elif event_type == "session.finished" and session.finish_requested:
+                    session.finish_confirmed.set()
                 elif event_type == "error":
                     error = event.get("error", {})
                     message = error.get("message", "Qwen realtime ASR error")
@@ -129,6 +193,8 @@ class QwenASRProvider(ASRProvider):
                             revision=0,
                         )
                     )
+                    if session.finish_requested:
+                        session.finish_confirmed.set()
         except asyncio.CancelledError:
             raise
         except ConnectionClosed as exc:
@@ -189,20 +255,23 @@ class QwenASRProvider(ASRProvider):
                             f"只输出{target_language_name}译文，不回答问题，不解释，不添加标题、引号或额外内容。"
                             "保留人名、产品名、数字和专业术语的准确含义。"
                         ),
-                        "temperature": 0.2,
-                        "turn_detection": {
-                            "type": "server_vad",
-                            "threshold": 0.3,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 500,
-                            "create_response": True,
-                            "interrupt_response": False,
-                        },
+                        "temperature": 0.0,
+                        "turn_detection": self.turn_detection_config(),
                     },
                 }
             )
         )
         return session
+
+    def turn_detection_config(self) -> dict[str, Any]:
+        return {
+            "type": self.vad_type,
+            "threshold": self.vad_threshold,
+            "prefix_padding_ms": self.vad_prefix_padding_ms,
+            "silence_duration_ms": self.vad_silence_duration_ms,
+            "create_response": True,
+            "interrupt_response": True,
+        }
 
     async def _get_session(self, session_id: str) -> QwenRealtimeSession:
         current = self._sessions.get(session_id)
@@ -319,6 +388,23 @@ class QwenASRProvider(ASRProvider):
         session = self._sessions.get(session_id)
         if not session or session.finished:
             return
+        session.finish_requested = True
+        session.finish_confirmed.clear()
+        await session.websocket.send(
+            json.dumps(
+                {
+                    "event_id": f"event_{uuid.uuid4().hex}",
+                    "type": "session.finish",
+                }
+            )
+        )
+        try:
+            await asyncio.wait_for(
+                session.finish_confirmed.wait(),
+                timeout=self.finish_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            pass
         session.finished = True
 
     async def close_session(self, session_id: str) -> None:

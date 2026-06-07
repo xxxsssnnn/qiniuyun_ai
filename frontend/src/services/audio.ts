@@ -21,7 +21,7 @@ export async function startAudioCapture(onChunk: (chunk: ArrayBuffer) => void) {
     if (audioContext.state === 'suspended') {
       await audioContext.resume()
     }
-    await audioContext.audioWorklet.addModule('/pcm16-worklet.js?v=2')
+    await audioContext.audioWorklet.addModule('/pcm16-worklet.js?v=3')
     source = audioContext.createMediaStreamSource(stream)
     processor = new AudioWorkletNode(audioContext, 'pcm16-processor', {
       numberOfInputs: 1,
@@ -34,8 +34,8 @@ export async function startAudioCapture(onChunk: (chunk: ArrayBuffer) => void) {
     })
     silentGain = audioContext.createGain()
     silentGain.gain.value = 0
-    processor.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      if (event.data.byteLength > 0) onChunk(event.data)
+    processor.port.onmessage = (event: MessageEvent<ArrayBuffer | { type: string }>) => {
+      if (event.data instanceof ArrayBuffer && event.data.byteLength > 0) onChunk(event.data)
     }
     processor.onprocessorerror = () => {
       stream.getTracks().forEach((track) => track.stop())
@@ -52,13 +52,27 @@ export async function startAudioCapture(onChunk: (chunk: ArrayBuffer) => void) {
 
   return {
     stream,
-    stop: () => {
+    stop: async () => {
       if (processor) {
+        source?.disconnect()
+        await new Promise<void>((resolve) => {
+          const timeout = window.setTimeout(resolve, 250)
+          processor!.port.onmessage = (event: MessageEvent<ArrayBuffer | { type: string }>) => {
+            if (event.data instanceof ArrayBuffer && event.data.byteLength > 0) {
+              onChunk(event.data)
+              return
+            }
+            if (!(event.data instanceof ArrayBuffer) && event.data.type === 'flushed') {
+              window.clearTimeout(timeout)
+              resolve()
+            }
+          }
+          processor!.port.postMessage({ type: 'flush' })
+        })
         processor.port.onmessage = null
         processor.onprocessorerror = null
         processor.disconnect()
       }
-      source?.disconnect()
       silentGain?.disconnect()
       void audioContext.close()
       stream.getTracks().forEach((track) => track.stop())

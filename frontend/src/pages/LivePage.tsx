@@ -51,8 +51,8 @@ export function LivePage() {
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([])
   const [sourceTranscript, setSourceTranscript] = useState<SourceTranscriptItem[]>([])
   const [socket, setSocket] = useState<{ current: WebSocket, send: (data: string | Blob | ArrayBufferLike | ArrayBufferView) => void, close: () => void } | null>(null)
-  const [audioSession, setAudioSession] = useState<{ stop: () => void } | null>(null)
-  const audioSessionRef = useRef<{ stop: () => void } | null>(null)
+  const [audioSession, setAudioSession] = useState<{ stop: () => Promise<void> } | null>(null)
+  const audioSessionRef = useRef<{ stop: () => Promise<void> } | null>(null)
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [autoSpeak, setAutoSpeak] = useState(true)
   const autoSpeakRef = useRef(true)
@@ -196,8 +196,8 @@ export function LivePage() {
     }
   }
 
-  const handleStopAudio = () => {
-    audioSession?.stop()
+  const handleStopAudio = async () => {
+    await audioSession?.stop()
     audioSessionRef.current = null
     setAudioSession(null)
     setAudioState('stopped')
