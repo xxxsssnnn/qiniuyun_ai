@@ -15,6 +15,7 @@ type SubtitleItem = {
   updatedAt: number
   autoCorrection?: boolean
   correctionReasons?: string[]
+  translationError?: boolean
 }
 
 type SourceTranscriptItem = {
@@ -41,6 +42,11 @@ const connectionLabels = {
 
 function isProviderError(sourceText: string, translatedText: string) {
   return /^\[(Qwen|OpenAI|Whisper|.*error|.*unavailable)/i.test(sourceText.trim()) || /^\[(Qwen|OpenAI|Whisper|.*error|.*unavailable)/i.test(translatedText.trim())
+}
+
+function getProviderErrorMessage(text: string) {
+  if (/unavailable/i.test(text)) return '翻译服务未配置，已保留最新原文'
+  return '翻译服务暂时异常，已保留最新原文'
 }
 
 export function LivePage() {
@@ -105,29 +111,30 @@ export function LivePage() {
               const correctionReasons = payload.reasons ?? payload.correctionReasons ?? existing?.correctionReasons ?? []
               const providerError = isProviderError(sourceText, translatedText)
 
-              if (sourceText.trim() && !providerError) {
+              if (sourceText.trim() && !isProviderError(sourceText, '')) {
                 setSourceTranscript((current) => {
                   const updatedSource: SourceTranscriptItem = { id: payload.chunk_id!, text: sourceText, isFinal, updatedAt: Date.now() }
                   return [updatedSource, ...current.filter((item) => item.id !== payload.chunk_id)].slice(0, 16)
                 })
               }
 
-              if (!isFinal || providerError || (!sourceText.trim() && !translatedText.trim())) {
+              if (!isFinal || (!sourceText.trim() && !translatedText.trim())) {
                 return prev.filter((item) => item.id !== payload.chunk_id)
               }
 
               const updated: SubtitleItem = {
                 id: payload.chunk_id!,
                 sourceText,
-                translatedText,
+                translatedText: providerError ? getProviderErrorMessage(translatedText || sourceText) : translatedText,
                 isFinal,
                 revision,
                 correctionCount: existing ? existing.correctionCount + (message.type === 'correction' || revision > existing.revision ? 1 : 0) : (autoCorrection ? 1 : 0),
                 updatedAt: Date.now(),
                 autoCorrection,
                 correctionReasons,
+                translationError: providerError,
               }
-              if (autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
+              if (!providerError && autoSpeakRef.current && translatedText && translatedText !== lastSpokenRef.current) {
                 const spoke = speakText(translatedText, speechLanguageRef.current)
                 if (spoke) lastSpokenRef.current = translatedText
               }
@@ -146,17 +153,23 @@ export function LivePage() {
       return chunks
     }).then((chunks) => {
       if (!chunks.length) return
-      setSubtitles(chunks.slice(-8).reverse().map((chunk: any) => ({
-        id: chunk.chunk_id,
-        sourceText: chunk.sourceText ?? chunk.source_text ?? '',
-        translatedText: chunk.translatedText ?? chunk.translated_text ?? '',
-        isFinal: chunk.isFinal ?? chunk.is_final ?? false,
-        revision: chunk.revision ?? 0,
-        correctionCount: chunk.auto_correction ? 1 : 0,
-        autoCorrection: chunk.auto_correction ?? false,
-        correctionReasons: chunk.correction_reasons ?? [],
-        updatedAt: Date.now(),
-      })))
+      setSubtitles(chunks.slice(-8).reverse().map((chunk: any) => {
+        const sourceText = chunk.sourceText ?? chunk.source_text ?? ''
+        const translatedText = chunk.translatedText ?? chunk.translated_text ?? ''
+        const providerError = isProviderError(sourceText, translatedText)
+        return {
+          id: chunk.chunk_id,
+          sourceText,
+          translatedText: providerError ? getProviderErrorMessage(translatedText || sourceText) : translatedText,
+          isFinal: chunk.isFinal ?? chunk.is_final ?? false,
+          revision: chunk.revision ?? 0,
+          correctionCount: chunk.auto_correction ? 1 : 0,
+          autoCorrection: chunk.auto_correction ?? false,
+          correctionReasons: chunk.correction_reasons ?? [],
+          translationError: providerError,
+          updatedAt: Date.now(),
+        }
+      }))
     }).catch(() => undefined)
 
     return () => {
@@ -252,6 +265,9 @@ export function LivePage() {
               <>
                 <p>{latestSubtitle.sourceText || '正在等待原文...'}</p>
                 <h2>{latestSubtitle.translatedText || '译文生成中...'}</h2>
+                {latestSubtitle.translationError ? (
+                  <small className="sci-correction-badge">请在设置中检查翻译模型与 API Key</small>
+                ) : null}
                 {latestSubtitle.autoCorrection ? (
                   <small className="sci-correction-badge">
                     AI 已自动纠错{latestSubtitle.correctionReasons?.length ? `：${latestSubtitle.correctionReasons.join('、')}` : ''}
